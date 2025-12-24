@@ -47,8 +47,8 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                     <CardContent>
                         <div className="text-2xl font-bold text-green-700">₹{summary.income.toFixed(2)}</div>
                         <div className="flex gap-4 mt-1 text-xs text-green-600">
-                            <div>Cash: <span className="font-semibold">₹{summary.cash.toFixed(2)}</span></div>
-                            <div>UPI: <span className="font-semibold">₹{summary.upi.toFixed(2)}</span></div>
+                            <div>Cash: <span className="font-semibold">₹{(summary.cash || 0).toFixed(2)}</span></div>
+                            <div>UPI: <span className="font-semibold">₹{(summary.upi || 0).toFixed(2)}</span></div>
                         </div>
                     </CardContent>
                 </Card>
