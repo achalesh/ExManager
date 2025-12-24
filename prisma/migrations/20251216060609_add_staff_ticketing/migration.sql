@@ -1,0 +1,27 @@
+-- CreateTable
+CREATE TABLE "StaffTicketAssignment" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "staffId" INTEGER NOT NULL,
+    "ticketInventoryId" INTEGER NOT NULL,
+    "ticketTypeId" INTEGER NOT NULL,
+    "seriesLabel" TEXT NOT NULL,
+    "startNumber" INTEGER NOT NULL,
+    "endNumber" INTEGER NOT NULL,
+    "assignedCount" INTEGER NOT NULL,
+    "assignedDate" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "status" TEXT NOT NULL DEFAULT 'Assigned',
+    "returnDate" DATETIME,
+    "returnedCount" INTEGER DEFAULT 0,
+    "soldCount" INTEGER DEFAULT 0,
+    "totalAmount" REAL DEFAULT 0.0,
+    "cashReceived" REAL DEFAULT 0.0,
+    "difference" REAL DEFAULT 0.0,
+    "remarks" TEXT,
+    "isSettled" BOOLEAN NOT NULL DEFAULT false,
+    "settlementDate" DATETIME,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL,
+    CONSTRAINT "StaffTicketAssignment_staffId_fkey" FOREIGN KEY ("staffId") REFERENCES "Staff" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "StaffTicketAssignment_ticketInventoryId_fkey" FOREIGN KEY ("ticketInventoryId") REFERENCES "TicketInventory" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "StaffTicketAssignment_ticketTypeId_fkey" FOREIGN KEY ("ticketTypeId") REFERENCES "TicketType" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+);
