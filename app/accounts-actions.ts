@@ -248,7 +248,7 @@ export async function getDailyTransactions(dateString?: string) {
         });
 
         return {
-            transactions: merged,
+            transactions: merged.slice(0, 20),
             summary: {
                 income: summary.income,
                 expense: summary.expense,

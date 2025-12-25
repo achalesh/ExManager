@@ -244,23 +244,23 @@ export async function getStaffAccounts() {
         const rows = await prisma.$queryRaw<any[]>`
             SELECT 
                 sta.id, 
-                sta.returnDate, 
-                sta.soldCount, 
-                sta.startNumber, 
-                sta.endNumber,
-                sta.totalAmount, 
-                sta.cashReceived, 
-                sta.upiReceived, 
-                sta.difference, 
-                sta.remarks, 
-                s.name as staffName, 
-                s.contactNo as staffContact,
-                tt.name as ticketTypeName
-            FROM StaffTicketAssignment sta
-            JOIN Staff s ON sta.staffId = s.id
-            JOIN TicketType tt ON sta.ticketTypeId = tt.id
-            WHERE sta.status = 'Returned' AND (sta.isSettled = 0 OR sta.isSettled = false)
-            ORDER BY sta.returnDate DESC
+                sta."returnDate", 
+                sta."soldCount", 
+                sta."startNumber", 
+                sta."endNumber",
+                sta."totalAmount", 
+                sta."cashReceived", 
+                sta."upiReceived", 
+                sta."difference", 
+                sta."remarks", 
+                s.name as "staffName", 
+                s."contactNo" as "staffContact",
+                tt.name as "ticketTypeName"
+            FROM "StaffTicketAssignment" sta
+            JOIN "Staff" s ON sta."staffId" = s.id
+            JOIN "TicketType" tt ON sta."ticketTypeId" = tt.id
+            WHERE sta.status = 'Returned' AND (sta."isSettled" = false)
+            ORDER BY sta."returnDate" DESC
         `;
 
         // Debug logging
