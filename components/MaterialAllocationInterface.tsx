@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -284,6 +284,9 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
 
 }
 
+import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Camera, CameraOff } from 'lucide-react';
+
 function ScanAllocationForm({ exhibitors, eventId, onSuccess }: { exhibitors: any[], eventId: number, onSuccess: () => void }) {
     const [codes, setCodes] = useState<string[]>([]);
     const [currentInput, setCurrentInput] = useState('');
@@ -291,16 +294,51 @@ function ScanAllocationForm({ exhibitors, eventId, onSuccess }: { exhibitors: an
     const [isFOC, setIsFOC] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [showCamera, setShowCamera] = useState(false);
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Camera Scanner logic
+    useEffect(() => {
+        let scanner: Html5QrcodeScanner | null = null;
+
+        if (showCamera) {
+            scanner = new Html5QrcodeScanner(
+                "reader",
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                /* verbose= */ false
+            );
+
+            scanner.render((decodedText) => {
+                if (decodedText) {
+                    setCodes(prev => {
+                        if (prev.includes(decodedText)) return prev;
+                        return [...prev, decodedText];
+                    });
+                    // Optional: Close camera after successful scan? 
+                    // No, continuous scanning is better for bulk.
+                    // Just show a visual feedback maybe, but list updates automatically.
+                }
+            }, (error) => {
+                // simple ignore
+            });
+        }
+
+        return () => {
+            if (scanner) {
+                scanner.clear().catch(error => console.error("Failed to clear html5-qrcode scanner. ", error));
+            }
+        };
+    }, [showCamera]);
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            if (currentInput.trim()) {
-                if (codes.includes(currentInput.trim())) {
+            const val = e.currentTarget.value;
+            if (val.trim()) {
+                if (codes.includes(val.trim())) {
                     setCurrentInput('');
                     return;
                 }
-                setCodes([...codes, currentInput.trim()]);
+                setCodes(prev => [...prev, val.trim()]);
                 setCurrentInput('');
             }
         }
@@ -353,19 +391,48 @@ function ScanAllocationForm({ exhibitors, eventId, onSuccess }: { exhibitors: an
             </div>
 
             <div className="p-4 bg-gray-50 border rounded-md">
-                <label className="block text-sm font-medium mb-2 flex items-center gap-2">
-                    <Scan className="h-4 w-4" />
-                    Scan QR Code (Press Enter)
-                </label>
-                <Input
-                    value={currentInput}
-                    onChange={(e) => setCurrentInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Focus here and scan..."
-                    autoFocus
-                    disabled={loading}
-                    className="mb-2"
-                />
+                <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium flex items-center gap-2">
+                        <Scan className="h-4 w-4" />
+                        Scan QR Code
+                    </label>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowCamera(!showCamera)}
+                        className="gap-2"
+                    >
+                        {showCamera ? (
+                            <>
+                                <CameraOff className="h-4 w-4" />
+                                Stop Camera
+                            </>
+                        ) : (
+                            <>
+                                <Camera className="h-4 w-4" />
+                                Use Camera
+                            </>
+                        )}
+                    </Button>
+                </div>
+
+                {showCamera && (
+                    <div className="mb-4">
+                        <div id="reader" className="w-full"></div>
+                        <p className="text-xs text-center text-gray-500 mt-1">Point your camera at a QR code</p>
+                    </div>
+                )}
+
+                <div className="mb-2">
+                    <Input
+                        value={currentInput}
+                        onChange={(e) => setCurrentInput(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder={showCamera ? "Or type/scan manual code..." : "Focus here and scan using USB scanner..."}
+                        autoFocus={!showCamera}
+                        disabled={loading}
+                    />
+                </div>
 
                 <div className="max-h-32 overflow-y-auto space-y-1">
                     {codes.map((code, idx) => (
