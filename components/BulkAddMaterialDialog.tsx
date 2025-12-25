@@ -76,7 +76,7 @@ export function BulkAddMaterialDialog({ materialId, materialName, onSuccess }: P
                             min="1"
                             max="100"
                             value={quantity}
-                            onChange={(e) => setQuantity(parseInt(e.target.value))}
+                            onChange={(e) => setQuantity(parseInt(e.target.value) || 0)}
                             className="col-span-3"
                         />
                     </div>
