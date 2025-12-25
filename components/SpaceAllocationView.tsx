@@ -1,10 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import { SpaceAllocationGrid } from '@/components/SpaceAllocationGrid';
-import { InteractiveMap } from '@/components/InteractiveMap';
 import { Button } from '@/components/ui/button';
-import { MapPin, Grid, Map as MapIcon, List, Printer } from 'lucide-react';
+import { MapPin, Printer } from 'lucide-react';
 
 interface SpaceAllocationViewProps {
     allSpaces: any[];
@@ -15,8 +13,6 @@ interface SpaceAllocationViewProps {
 }
 
 export function SpaceAllocationView({ allSpaces, bookings, exhibitors, eventId, eventName }: SpaceAllocationViewProps) {
-    const [viewMode, setViewMode] = useState<'map' | 'grid'>('map');
-
     const availableSpaces = allSpaces.filter(s => s.status === 'Available');
     const totalRevenue = bookings.reduce((sum, b) => sum + b.totalAmount, 0);
 
@@ -32,24 +28,6 @@ export function SpaceAllocationView({ allSpaces, bookings, exhibitors, eventId, 
                     </p>
                 </div>
                 <div className="flex items-center gap-2 mt-4 md:mt-0 bg-gray-100 p-1 rounded-lg print:hidden">
-                    <Button
-                        variant={viewMode === 'map' ? 'secondary' : 'ghost'}
-                        className={viewMode === 'map' ? 'bg-white shadow-sm' : 'text-gray-500 hover:text-gray-900'}
-                        size="sm"
-                        onClick={() => setViewMode('map')}
-                    >
-                        <MapIcon className="h-4 w-4 mr-2" />
-                        Map View
-                    </Button>
-                    <Button
-                        variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-                        className={viewMode === 'grid' ? 'bg-white shadow-sm' : 'text-gray-500 hover:text-gray-900'}
-                        size="sm"
-                        onClick={() => setViewMode('grid')}
-                    >
-                        <Grid className="h-4 w-4 mr-2" />
-                        List View
-                    </Button>
                     <Button
                         variant="ghost"
                         size="sm"
@@ -107,25 +85,16 @@ export function SpaceAllocationView({ allSpaces, bookings, exhibitors, eventId, 
             </div>
 
             <div className="bg-white rounded-lg shadow-sm border min-h-[500px] p-1">
-                {viewMode === 'map' ? (
-                    <div className="p-4">
-                        <InteractiveMap
-                            spaces={allSpaces}
-                            exhibitors={exhibitors}
-                            eventId={eventId}
-                        />
-                    </div>
-                ) : (
-                    <div className="p-4">
-                        <SpaceAllocationGrid
-                            availableSpaces={availableSpaces}
-                            bookings={bookings}
-                            exhibitors={exhibitors}
-                            eventId={eventId}
-                        />
-                    </div>
-                )}
+                <div className="p-4">
+                    <SpaceAllocationGrid
+                        availableSpaces={availableSpaces}
+                        bookings={bookings}
+                        exhibitors={exhibitors}
+                        eventId={eventId}
+                    />
+                </div>
             </div>
         </div>
     );
 }
+

@@ -167,7 +167,7 @@ export function SpaceAllocationGrid({ availableSpaces, bookings, exhibitors, eve
 
                                 <div className="text-center pt-2 border-t border-gray-100">
                                     <div className="text-xs text-gray-500">
-                                        {booking.space.category.name}
+                                        {booking.space.category.name} ({booking.space.category.dimensions})
                                     </div>
                                     <div className="text-sm font-semibold text-gray-700">
                                         ₹{booking.totalAmount.toFixed(2)}

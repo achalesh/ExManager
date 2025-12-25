@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SettleAccountButton } from '@/components/ticketing/SettleAccountButton';
 import { UndoReconcileButton } from '@/components/ticketing/UndoReconcileButton';
 import { BulkSettleButton } from '@/components/ticketing/BulkSettleButton';
+import { PrintButton } from '@/components/PrintButton';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -24,30 +25,34 @@ export default async function SettlementsPage() {
         <div className="max-w-7xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <Link href="/dashboard/ticketing/staff">
+                    <Link href="/dashboard/ticketing/staff" className="print:hidden">
                         <Button variant="ghost" size="icon">
                             <ArrowLeft className="h-4 w-4" />
                         </Button>
                     </Link>
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900">Pending Settlements</h1>
-                        <p className="text-gray-600">Review and settle staff accounts with discrepancies.</p>
+                        <p className="text-gray-600 print:hidden">Review and settle staff accounts with discrepancies.</p>
+                        <p className="hidden print:block text-sm text-gray-500">Printed on {new Date().toLocaleDateString()}</p>
                     </div>
                 </div>
-                {unsettledAccounts.length > 0 && (
-                    <BulkSettleButton ids={allIds} totalDifference={totalDifference} />
-                )}
+                <div className="flex items-center gap-2 print:hidden">
+                    <PrintButton />
+                    {unsettledAccounts.length > 0 && (
+                        <BulkSettleButton ids={allIds} totalDifference={totalDifference} />
+                    )}
+                </div>
             </div>
 
-            <Card>
-                <CardHeader>
+            <Card className="print:shadow-none print:border-none">
+                <CardHeader className="print:hidden">
                     <CardTitle>Settlements</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="print:p-0">
                     {unsettledAccounts.length > 0 ? (
-                        <div className="overflow-x-auto">
+                        <div className="overflow-x-auto print:overflow-visible">
                             <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50">
+                                <thead className="bg-gray-50 print:bg-white">
                                     <tr>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Staff</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket Type</th>
@@ -57,7 +62,7 @@ export default async function SettlementsPage() {
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Collected</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Difference</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remarks</th>
-                                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider print:hidden">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-gray-200">
@@ -97,13 +102,12 @@ export default async function SettlementsPage() {
                                             <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
                                                 {account.remarks || '-'}
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-right">
+                                            <td className="px-6 py-4 whitespace-nowrap text-right print:hidden">
                                                 <div className="flex items-center justify-end gap-2">
                                                     <UndoReconcileButton id={account.id} />
                                                     <SettleAccountButton id={account.id} />
                                                 </div>
                                             </td>
-
                                         </tr>
                                     ))}
                                 </tbody>
