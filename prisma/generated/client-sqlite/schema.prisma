@@ -1,0 +1,429 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client-sqlite"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Event {
+  id                    Int                    @id @default(autoincrement())
+  name                  String
+  location              String
+  startDate             DateTime
+  endDate               DateTime
+  status                String                 @default("Upcoming") // Upcoming, Ongoing, Completed
+  spaces                Space[]
+  bookings              Booking[]
+  sessions              Session[]
+  materialAllocations   MaterialAllocation[]
+  electricalAllocations ElectricalAllocation[]
+  shedAllocations       ShedAllocation[]
+  ticketTypes           TicketType[]
+  ticketSales           TicketSale[]
+  ticketInventories     TicketInventory[]
+  staffList             Staff[]
+  auditLogs             AuditLog[]
+  invoices              Invoice[]
+  transactions          Transaction[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+}
+
+// Inventory Models
+model TicketInventory {
+  id               Int                     @id @default(autoincrement())
+  eventId          Int
+  event            Event                   @relation(fields: [eventId], references: [id])
+  seriesLabel      String                  @default("Batch") // e.g. "Series A", "Return Stock"
+  startNumber      Int
+  endNumber        Int
+  currentNumber    Int // Tracks the head of the available range
+  status           String                  @default("Available") // Available, Exhausted
+  price            Float                   @default(0.0) // Added field
+  category         String                  @default("General") // Added field
+  staffAssignments StaffTicketAssignment[]
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+}
+
+model Staff {
+  id          Int      @id @default(autoincrement())
+  name        String
+  age         Int
+  dob         DateTime
+  address     String
+  contactNo   String
+  secContact  String? // Secondary Number
+  adharNumber String
+  photoUrl    String? // Path to uploaded photo
+  department  String // Office, Amusement, Security, Booking
+
+  eventId Int
+  event   Event @relation(fields: [eventId], references: [id])
+
+  userId Int?  @unique
+  user   User? @relation(fields: [userId], references: [id])
+
+  ticketAssignments StaffTicketAssignment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StaffTicketAssignment {
+  id                Int             @id @default(autoincrement())
+  staffId           Int
+  staff             Staff           @relation(fields: [staffId], references: [id])
+  ticketInventoryId Int
+  ticketInventory   TicketInventory @relation(fields: [ticketInventoryId], references: [id])
+  ticketTypeId      Int
+  ticketType        TicketType      @relation(fields: [ticketTypeId], references: [id])
+
+  seriesLabel   String
+  startNumber   Int
+  endNumber     Int
+  assignedCount Int
+
+  assignedDate DateTime @default(now())
+  status       String   @default("Assigned") // Assigned, Returned
+
+  // Reconciliation
+  returnDate    DateTime?
+  returnedCount Int?      @default(0)
+  soldCount     Int?      @default(0)
+  totalAmount   Float?    @default(0.0)
+  cashReceived  Float?    @default(0.0)
+  upiReceived   Float?    @default(0.0) // Added field for digital payments
+  difference    Float?    @default(0.0) // (Cash + UPI) - TotalAmount
+  remarks       String?
+
+  isSettled      Boolean   @default(false)
+  settlementDate DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SpaceCategory {
+  id         Int      @id @default(autoincrement())
+  name       String
+  price      Float
+  shape      String   @default("Square") // Square, Rectangle, etc.
+  dimensions String // e.g. "3x3"
+  spaces     Space[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Space {
+  id         Int           @id @default(autoincrement())
+  label      String // e.g. "A-01"
+  eventId    Int
+  event      Event         @relation(fields: [eventId], references: [id])
+  categoryId Int
+  category   SpaceCategory @relation(fields: [categoryId], references: [id])
+  positionX  Int? // X coordinate for visual map
+  positionY  Int? // Y coordinate for visual map
+  status     String        @default("Available") // Available, Booked, Reserved
+  bookings   Booking[]
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+model Exhibitor {
+  id                      Int                    @id @default(autoincrement())
+  name                    String
+  faciaName               String                 @default("")
+  productCategory         String                 @default("")
+  idProof                 String                 @default("")
+  contact                 String
+  phone                   String
+  secondaryPhone          String                 @default("")
+  address                 String                 @default("")
+  advancePaid             Float                  @default(0.0)
+  isPhysicalFormSubmitted Boolean                @default(false)
+  email                   String
+  bookings                Booking[]
+  materialAllocations     MaterialAllocation[]
+  electricalAllocations   ElectricalAllocation[]
+  shedAllocations         ShedAllocation[]
+  invoices                Invoice[]
+  payments                Payment[]
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+}
+
+model Booking {
+  id          Int       @id @default(autoincrement())
+  event       Event     @relation(fields: [eventId], references: [id])
+  eventId     Int
+  space       Space     @relation(fields: [spaceId], references: [id])
+  spaceId     Int
+  exhibitor   Exhibitor @relation(fields: [exhibitorId], references: [id])
+  exhibitorId Int
+  bookedAt    DateTime  @default(now())
+  totalAmount Float
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// Authentication Models
+model User {
+  id           Int        @id @default(autoincrement())
+  username     String     @unique
+  password     String // Hashed with bcrypt
+  name         String
+  email        String     @unique
+  roleId       Int
+  role         Role       @relation(fields: [roleId], references: [id])
+  sessions     Session[]
+  auditLogs    AuditLog[]
+  staffProfile Staff?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String   @default("")
+  permissions String   @default("") // JSON string of permissions
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Session {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  user          User     @relation(fields: [userId], references: [id])
+  activeEventId Int?
+  activeEvent   Event?   @relation(fields: [activeEventId], references: [id])
+  token         String   @unique
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// Resource Models for Settings
+model Material {
+  id          Int                  @id @default(autoincrement())
+  name        String
+  description String               @default("")
+  price       Float                @default(0.0)
+  unit        String               @default("piece")
+  allocations MaterialAllocation[]
+  items       MaterialItem[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+}
+
+model MaterialItem {
+  id                 Int                 @id @default(autoincrement())
+  materialId         Int
+  material           Material            @relation(fields: [materialId], references: [id])
+  uniqueCode         String              @unique // e.g. MAT-CHAIR-001
+  status             String              @default("Available") // Available, Allocated, Damaged, Lost
+  activeAllocationId Int?
+  activeAllocation   MaterialAllocation? @relation(fields: [activeAllocationId], references: [id])
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+model ElectricalItem {
+  id          Int                    @id @default(autoincrement())
+  name        String
+  description String                 @default("")
+  price       Float                  @default(0.0)
+  wattage     Int                    @default(0)
+  allocations ElectricalAllocation[]
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+}
+
+model Shed {
+  id          Int              @id @default(autoincrement())
+  name        String
+  description String           @default("")
+  dimensions  String           @default("")
+  price       Float            @default(0.0)
+  allocations ShedAllocation[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+// Allocation Models
+model MaterialAllocation {
+  id          Int            @id @default(autoincrement())
+  exhibitorId Int
+  exhibitor   Exhibitor      @relation(fields: [exhibitorId], references: [id])
+  materialId  Int
+  material    Material       @relation(fields: [materialId], references: [id])
+  quantity    Int
+  totalPrice  Float
+  eventId     Int
+  event       Event          @relation(fields: [eventId], references: [id])
+  isFOC       Boolean        @default(false)
+  items       MaterialItem[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model ElectricalAllocation {
+  id               Int            @id @default(autoincrement())
+  exhibitorId      Int
+  exhibitor        Exhibitor      @relation(fields: [exhibitorId], references: [id])
+  electricalItemId Int
+  electricalItem   ElectricalItem @relation(fields: [electricalItemId], references: [id])
+  quantity         Int
+  totalPrice       Float
+  totalWattage     Int
+  eventId          Int
+  event            Event          @relation(fields: [eventId], references: [id])
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model ShedAllocation {
+  id          Int       @id @default(autoincrement())
+  exhibitorId Int
+  exhibitor   Exhibitor @relation(fields: [exhibitorId], references: [id])
+  shedId      Int
+  shed        Shed      @relation(fields: [shedId], references: [id])
+  price       Float
+  eventId     Int
+  event       Event     @relation(fields: [eventId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// Ticketing Models
+model TicketType {
+  id               Int                     @id @default(autoincrement())
+  eventId          Int
+  event            Event                   @relation(fields: [eventId], references: [id])
+  category         String // "Entrance" or "Amusement"
+  name             String // e.g. "Adult Entry", "Ferris Wheel"
+  price            Float
+  batches          TicketBatch[]
+  saleItems        TicketSaleItem[]
+  staffAssignments StaffTicketAssignment[] // Added relation
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+}
+
+model TicketBatch {
+  id            Int        @id @default(autoincrement())
+  ticketTypeId  Int
+  ticketType    TicketType @relation(fields: [ticketTypeId], references: [id])
+  startNumber   Int
+  endNumber     Int
+  currentNumber Int // The next number to be sold
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model TicketSale {
+  id          Int              @id @default(autoincrement())
+  eventId     Int
+  event       Event            @relation(fields: [eventId], references: [id])
+  totalAmount Float
+  source      String           @default("Counter") // "Counter" or "Staff"
+  items       TicketSaleItem[]
+  createdAt   DateTime         @default(now())
+}
+
+model TicketSaleItem {
+  id           Int        @id @default(autoincrement())
+  saleId       Int
+  sale         TicketSale @relation(fields: [saleId], references: [id])
+  ticketTypeId Int
+  ticketType   TicketType @relation(fields: [ticketTypeId], references: [id])
+  ticketNumber Int // The specific serial number assigned
+  price        Float
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  eventId   Int
+  event     Event    @relation(fields: [eventId], references: [id])
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  details   String
+  createdAt DateTime @default(now())
+}
+
+// Billing Models
+model Invoice {
+  id            Int       @id @default(autoincrement())
+  invoiceNumber String    @unique // e.g. INV-2024-001
+  exhibitorId   Int
+  exhibitor     Exhibitor @relation(fields: [exhibitorId], references: [id])
+  eventId       Int
+  event         Event     @relation(fields: [eventId], references: [id])
+
+  // Breakdown
+  spaceTotal      Float @default(0.0)
+  materialTotal   Float @default(0.0)
+  electricalTotal Float @default(0.0)
+  shedTotal       Float @default(0.0)
+  subtotal        Float // Sum of above
+
+  taxAmount      Float @default(0.0) // GST/VAT if applicable
+  discountAmount Float @default(0.0)
+  grandTotal     Float // Final amount to be paid
+
+  status  String    @default("Unpaid") // Unpaid, Partial, Paid, Cancelled
+  dueDate DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments Payment[]
+}
+
+model Payment {
+  id            Int    @id @default(autoincrement())
+  receiptNumber String @unique // e.g. RCP-2024-001
+
+  exhibitorId Int
+  exhibitor   Exhibitor @relation(fields: [exhibitorId], references: [id])
+
+  invoiceId Int? // Optional, can be advance payment not linked yet
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
+
+  amount          Float
+  paymentMethod   String // Cash, UPI, Cheque, Bank Transfer
+  referenceNumber String? // Transaction ID or Cheque No
+  paymentDate     DateTime @default(now())
+  category        String   @default("General") // Rent, Material, Electrical, Shed, General
+
+  notes       String?
+  collectedBy String? // User name/ID
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Accounts / Day Book
+model Transaction {
+  id              Int      @id @default(autoincrement())
+  eventId         Int
+  event           Event    @relation(fields: [eventId], references: [id])
+  type            String // "Income" or "Expense"
+  category        String // e.g. "Food", "Travel", "Salary", "Scrap Sale"
+  amount          Float
+  paymentMethod   String   @default("Cash") // Cash, UPI, etc.
+  description     String?
+  transactionDate DateTime @default(now()) // The actual date of transaction
+
+  recordedBy String? // User who added it
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

@@ -5,6 +5,8 @@ import { getEventReport } from '@/app/report-actions';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Calendar, MapPin, Users, IndianRupee, Package, Zap } from 'lucide-react';
+import { getPendingPasswordRequests } from '@/app/admin-actions';
+import { PasswordRequestsAlert } from '@/components/PasswordRequestsAlert';
 
 export default async function DashboardPage() {
     const session = await getSession();
@@ -12,6 +14,9 @@ export default async function DashboardPage() {
     if (!session) {
         redirect('/login');
     }
+
+    // Checking for Admin role and fetching requests
+    const pendingRequests = session.roleName === 'Admin' ? await getPendingPasswordRequests() : [];
 
     // If no active event, show event selection
     if (!session.activeEventId) {
@@ -21,7 +26,12 @@ export default async function DashboardPage() {
 
         return (
             <div className="max-w-4xl mx-auto">
+                {/* Show Alert here too for when selecting events */}
+                <PasswordRequestsAlert requests={pendingRequests} />
+
                 <div className="bg-white rounded-lg shadow-sm p-8">
+                    {/* ... existing code ... */}
+
                     <h1 className="text-3xl font-bold text-gray-900 mb-2">
                         Welcome, {session.name}!
                     </h1>
@@ -87,6 +97,8 @@ export default async function DashboardPage() {
                     Managing: {session.activeEventName}
                 </p>
             </div>
+
+            <PasswordRequestsAlert requests={pendingRequests} />
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <StatCard
@@ -180,7 +192,7 @@ export default async function DashboardPage() {
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }
 

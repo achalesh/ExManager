@@ -6,6 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { login } from '@/lib/auth';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 
 export default function LoginPage() {
     const [username, setUsername] = useState('');
@@ -13,6 +21,32 @@ export default function LoginPage() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
+
+    // Reset Password State
+    const [openReset, setOpenReset] = useState(false);
+    const [resetUsername, setResetUsername] = useState('');
+    const [resetLoading, setResetLoading] = useState(false);
+
+    async function handleResetRequest(e: React.FormEvent) {
+        e.preventDefault();
+        setResetLoading(true);
+        try {
+            const { requestPasswordReset } = await import('@/app/password-actions');
+            const result = await requestPasswordReset(resetUsername);
+            if (result.success) {
+                setOpenReset(false);
+                setResetUsername('');
+                alert('Request sent! An administrator will review your request.');
+            } else {
+                alert(result.error || 'Failed to send request');
+            }
+        } catch (error) {
+            console.error(error);
+            alert('Something went wrong');
+        } finally {
+            setResetLoading(false);
+        }
+    }
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -64,8 +98,19 @@ export default function LoginPage() {
                             />
                         </div>
 
+
                         <div>
-                            <Label htmlFor="password">Password</Label>
+                            <div className="flex items-center justify-between">
+                                <Label htmlFor="password">Password</Label>
+                                <Button
+                                    variant="link"
+                                    className="px-0 font-normal h-auto text-sm text-indigo-600 hover:text-indigo-800"
+                                    type="button"
+                                    onClick={() => setOpenReset(true)}
+                                >
+                                    Forgot password?
+                                </Button>
+                            </div>
                             <Input
                                 id="password"
                                 type="password"
@@ -93,12 +138,39 @@ export default function LoginPage() {
                         </Button>
                     </form>
 
-                    <div className="mt-6 text-center text-sm text-gray-600">
-                        <p>Default credentials:</p>
-                        <p className="font-mono mt-1">admin / admin123</p>
-                    </div>
                 </div>
-            </div>
-        </div>
+            </div >
+
+            <Dialog open={openReset} onOpenChange={setOpenReset}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Reset Password</DialogTitle>
+                        <DialogDescription>
+                            Enter your username below. We will notify the administrator to reset your password.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleResetRequest}>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid gap-2">
+                                <Label htmlFor="reset-username">Username</Label>
+                                <Input
+                                    id="reset-username"
+                                    value={resetUsername}
+                                    onChange={(e) => setResetUsername(e.target.value)}
+                                    placeholder="Enter your username"
+                                    required
+                                />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setOpenReset(false)}>Cancel</Button>
+                            <Button type="submit" disabled={resetLoading}>
+                                {resetLoading ? 'Sending Request...' : 'Request Reset'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+        </div >
     );
 }

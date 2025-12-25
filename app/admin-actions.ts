@@ -156,3 +156,138 @@ export async function deleteRole(id: number) {
     }
 }
 
+
+const updateUserSchema = z.object({
+    id: z.number(),
+    username: z.string().min(3, "Username must be at least 3 characters"),
+    name: z.string().min(2, "Name must be at least 2 characters"),
+    email: z.string().email("Invalid email address"),
+    roleId: z.number().min(1, "Role is required"),
+});
+
+export async function updateUser(data: z.infer<typeof updateUserSchema>) {
+    const session = await getSession();
+    if (!session || session.roleName !== 'Admin') {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const parsed = updateUserSchema.parse(data);
+
+        // Check unique username (excluding self)
+        const existingUser = await prisma.user.findFirst({
+            where: {
+                username: parsed.username,
+                id: { not: parsed.id }
+            }
+        });
+        if (existingUser) return { success: false, error: 'Username already taken' };
+
+        // Check unique email
+        const existingEmail = await prisma.user.findFirst({
+            where: {
+                email: parsed.email,
+                id: { not: parsed.id }
+            }
+        });
+        if (existingEmail) return { success: false, error: 'Email already in use' };
+
+        await prisma.user.update({
+            where: { id: parsed.id },
+            data: {
+                username: parsed.username,
+                name: parsed.name,
+                email: parsed.email,
+                roleId: parsed.roleId,
+            }
+        });
+
+        revalidatePath('/dashboard/admin/users');
+        return { success: true };
+    } catch (error) {
+        console.error('Update User Error:', error);
+        return { success: false, error: 'Failed to update user' };
+    }
+}
+
+export async function deleteUser(id: number) {
+    const session = await getSession();
+    if (!session || session.roleName !== 'Admin') {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        // Prevent self-delete
+        if (session.userId === id) {
+            return { success: false, error: 'Cannot delete your own account' };
+        }
+
+        await prisma.user.delete({ where: { id } });
+        revalidatePath('/dashboard/admin/users');
+        return { success: true };
+    } catch (error) {
+        console.error('Delete User Error:', error);
+        return { success: false, error: 'Failed to delete user. They may have related records.' };
+    }
+}
+
+export async function resetUserPassword(id: number, newPassword: string) {
+    const session = await getSession();
+    if (!session || session.roleName !== 'Admin') {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        if (newPassword.length < 6) {
+            return { success: false, error: 'Password must be at least 6 characters' };
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        await prisma.user.update({
+            where: { id },
+            data: { password: hashedPassword }
+        });
+
+        return { success: true };
+    } catch (error) {
+        console.error('Reset Password Error:', error);
+        return { success: false, error: 'Failed to reset password' };
+    }
+}
+
+export async function getPendingPasswordRequests() {
+    const session = await getSession();
+    if (!session || session.roleName !== 'Admin') return [];
+
+    return await prisma.passwordResetRequest.findMany({
+        where: { status: 'PENDING' },
+        include: { user: true },
+        orderBy: { createdAt: 'desc' }
+    });
+}
+
+export async function resolvePasswordRequest(requestId: number) {
+    const session = await getSession();
+    if (!session || session.roleName !== 'Admin') return { success: false };
+
+    await prisma.passwordResetRequest.update({
+        where: { id: requestId },
+        data: { status: 'RESOLVED' }
+    });
+
+    revalidatePath('/dashboard/admin/users');
+    return { success: true };
+}
+
+export async function dismissPasswordRequest(requestId: number) {
+    const session = await getSession();
+    if (!session || session.roleName !== 'Admin') return { success: false };
+
+    await prisma.passwordResetRequest.update({
+        where: { id: requestId },
+        data: { status: 'IGNORED' }
+    });
+
+    revalidatePath('/dashboard/admin/users');
+    return { success: true };
+}

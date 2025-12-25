@@ -1,7 +1,9 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
-import { getUsers, getRoles } from '@/app/admin-actions';
+import { getUsers, getRoles, getPendingPasswordRequests } from '@/app/admin-actions';
 import { CreateUserDialog } from '@/components/CreateUserDialog';
+import { UserActions } from '@/components/UserActions';
+import { PasswordRequestsAlert } from '@/components/PasswordRequestsAlert';
 import { Shield, Mail, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -16,9 +18,10 @@ export default async function CreateUserPage() {
         redirect('/dashboard');
     }
 
-    const [users, roles] = await Promise.all([
+    const [users, roles, pendingRequests] = await Promise.all([
         getUsers(),
-        getRoles()
+        getRoles(),
+        getPendingPasswordRequests()
     ]);
 
     return (
@@ -34,6 +37,8 @@ export default async function CreateUserPage() {
                 </div>
                 <CreateUserDialog roles={roles} />
             </div>
+
+            <PasswordRequestsAlert requests={pendingRequests} />
 
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
@@ -52,12 +57,15 @@ export default async function CreateUserPage() {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     Created
                                 </th>
+                                <th className="px-6 py-3 relative">
+                                    <span className="sr-only">Actions</span>
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                             {users.length === 0 ? (
                                 <tr>
-                                    <td colSpan={4} className="px-6 py-12 text-center text-gray-500">
+                                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
                                         <Shield className="h-12 w-12 text-gray-400 mx-auto mb-3" />
                                         <p>No users found</p>
                                     </td>
@@ -90,10 +98,10 @@ export default async function CreateUserPage() {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${user.role.name === 'Admin'
-                                                    ? 'bg-purple-100 text-purple-800'
-                                                    : user.role.name === 'Manager'
-                                                        ? 'bg-blue-100 text-blue-800'
-                                                        : 'bg-green-100 text-green-800'
+                                                ? 'bg-purple-100 text-purple-800'
+                                                : user.role.name === 'Manager'
+                                                    ? 'bg-blue-100 text-blue-800'
+                                                    : 'bg-green-100 text-green-800'
                                                 }`}>
                                                 {user.role.name}
                                             </span>
@@ -103,6 +111,9 @@ export default async function CreateUserPage() {
                                                 <Calendar className="h-4 w-4 mr-2" />
                                                 {format(new Date(user.createdAt), 'MMM d, yyyy')}
                                             </div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                            <UserActions user={user} roles={roles} currentUserId={session.userId} />
                                         </td>
                                     </tr>
                                 ))
