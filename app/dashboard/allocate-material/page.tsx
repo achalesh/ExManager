@@ -70,7 +70,7 @@ export default async function AllocateMaterialPage() {
                         <div>
                             <p className="text-sm font-medium text-gray-600">Total Cost</p>
                             <p className="text-3xl font-bold text-purple-600 mt-2">
-                                ${totalCost.toFixed(2)}
+                                ₹{totalCost.toFixed(2)}
                             </p>
                         </div>
                         <div className="bg-purple-100 rounded-lg p-3">

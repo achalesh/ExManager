@@ -21,8 +21,8 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { Plus, Package, IndianRupee } from 'lucide-react';
-import { allocateMaterial, allocateScannedItems } from '@/app/allocation-actions';
-import { Scan, X } from 'lucide-react';
+import { allocateMaterial, allocateScannedItems, allocateMaterialItems, deleteMaterialAllocation, updateMaterialAllocation, allocateBatchMaterials } from '@/app/allocation-actions';
+import { Scan, X, Trash2, Pencil } from 'lucide-react';
 
 interface MaterialAllocationInterfaceProps {
     materials: any[];
@@ -42,8 +42,153 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
         exhibitorId: 0,
         materialId: 0,
         quantity: 1,
+        focQuantity: 0, // Split allocation
         isFOC: false,
     });
+
+    const [trackItems, setTrackItems] = useState(false);
+    const [itemSuffixes, setItemSuffixes] = useState<string[]>([]);
+    const [suffixInput, setSuffixInput] = useState('');
+
+
+    const addSuffixesFromInput = (input: string) => {
+        const parts = input.split(',').map(s => s.trim()).filter(s => s !== '');
+        const newSuffixes = parts.filter(p => !itemSuffixes.includes(p));
+
+        if (newSuffixes.length > 0) {
+            setItemSuffixes(prev => [...prev, ...newSuffixes]);
+        }
+        setSuffixInput('');
+    };
+
+    const handleSuffixKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addSuffixesFromInput(e.currentTarget.value);
+        }
+    };
+
+    // We don't need parseSuffix or distinct addSuffix anymore if we use the above.
+    // Let's replace the whole block from 39 to 60.
+
+    // Original removeSuffix is fine.
+
+    const removeSuffix = (val: string) => {
+        setItemSuffixes(itemSuffixes.filter(s => s !== val));
+    };
+
+    const [editMode, setEditMode] = useState(false);
+    const [editAllocationId, setEditAllocationId] = useState<number | null>(null);
+
+    const handleEdit = (allocation: any) => {
+        setFormData({
+            exhibitorId: allocation.exhibitorId,
+            materialId: allocation.materialId,
+            quantity: allocation.quantity,
+            focQuantity: 0, // Edit mode doesn't support split edit yet
+            isFOC: allocation.isFOC
+        });
+
+        // Handle tracked items
+        if (allocation.items && allocation.items.length > 0) {
+            setTrackItems(true);
+            const suffixes = allocation.items.map((i: any) => i.uniqueCode.split('-').pop());
+            // Assumption: suffix is last part. Or safely use full code? 
+            // The allocate function expects suffixes if we want to match, but here we might want to display the full code or just the ID part.
+            // If the code is "MAT-CHAIR-001", suffix is "001".
+            // The allocation action finds items where uniqueCode endsWith suffix.
+            // So extracting suffix is correct.
+            setItemSuffixes(suffixes);
+        } else {
+            setTrackItems(false);
+            setItemSuffixes([]);
+        }
+
+        setEditMode(true);
+        setEditAllocationId(allocation.id);
+        setOpen(true);
+    };
+
+    // Reset form when dialog closes (if not submitting logic handles it)
+    useEffect(() => {
+        if (!open) {
+            setEditMode(false);
+            setEditAllocationId(null);
+            setFormData({
+                exhibitorId: 0,
+                materialId: 0,
+                quantity: 1,
+                focQuantity: 0,
+                isFOC: false,
+            });
+            setTrackItems(false);
+            setItemSuffixes([]);
+            setError(''); // Clear any previous errors
+            setScanMode(false); // Reset scan mode
+        }
+    }, [open]);
+
+
+    // Batch Allocation State
+    const [batchItems, setBatchItems] = useState<any[]>([]);
+
+    const addToBatch = () => {
+        // Validate current form
+        if (formData.materialId === 0) {
+            setError('Please select a material');
+            return;
+        }
+        if (formData.quantity < 1 && !trackItems) {
+            setError('Quantity must be at least 1');
+            return;
+        }
+        if (trackItems && itemSuffixes.length === 0) {
+            setError('Please add at least one Item ID');
+            return;
+        }
+        if (trackItems && itemSuffixes.length !== formData.quantity && formData.quantity !== 1) {
+            // If manual quantity input vs suffixes mismatch?
+            // Actually, usually in track mode, quantity is derived from suffixes.
+            // But let's strictly check if they match or just override quantity.
+            // For now, if tracked, quantity is derived from suffixes.
+        }
+
+        const material = materials.find(m => m.id === formData.materialId);
+        if (!material) {
+            setError('Selected material not found.');
+            return;
+        }
+
+        // Add to list
+        const newItem = {
+            id: Date.now(), // temp id
+            materialName: material.name,
+            materialId: formData.materialId,
+            quantity: trackItems ? itemSuffixes.length : formData.quantity,
+            focQuantity: formData.focQuantity,
+            suffixes: trackItems ? [...itemSuffixes] : [],
+            isTracked: trackItems
+        };
+
+        setBatchItems([...batchItems, newItem]);
+
+        // Reset inputs but keep Exhibitor
+        setFormData(prev => ({
+            ...prev,
+            materialId: 0,
+            quantity: 1,
+            focQuantity: 0,
+            isFOC: false
+        }));
+        setTrackItems(false);
+        setItemSuffixes([]);
+        setError('');
+        setScanMode(false);
+    };
+
+    const removeFromBatch = (id: number) => {
+        setBatchItems(batchItems.filter(i => i.id !== id));
+    };
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -51,25 +196,81 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
         setLoading(true);
 
         try {
-            const result = await allocateMaterial({
-                ...formData,
-                eventId
-            });
+            let result;
+
+            // If Edit Mode -> Single Item Update (Legacy path for editing)
+            if (editMode && editAllocationId) {
+                result = await updateMaterialAllocation({
+                    allocationId: editAllocationId,
+                    exhibitorId: formData.exhibitorId,
+                    materialId: formData.materialId,
+                    quantity: formData.quantity,
+                    suffixes: trackItems ? itemSuffixes : undefined,
+                    eventId,
+                    isFOC: formData.isFOC
+                });
+            } else {
+                // Batch Allocation
+                // If user has pending item in form, warn them or auto-add?
+                // Let's require them to "Add" first, OR if list is empty, submit current form as single item.
+
+                let finalItems = [...batchItems];
+
+                // If list is empty, try to use current form data (Single Allocation behavior preserved)
+                if (finalItems.length === 0) {
+                    if (formData.materialId === 0) {
+                        setError("Please select a material or add items to the list");
+                        setLoading(false);
+                        return;
+                    }
+                    // Add current form data as one item
+                    finalItems.push({
+                        materialId: formData.materialId,
+                        quantity: trackItems ? itemSuffixes.length : formData.quantity,
+                        focQuantity: formData.focQuantity,
+                        suffixes: trackItems ? itemSuffixes : undefined
+                    });
+                }
+
+                // If user has items in list AND filled out form but didn't click add?
+                // UX: Just ignore form or ask?
+                // Simplest: only submit what's in list if list > 0.
+                if (batchItems.length > 0 && formData.materialId !== 0) {
+                    // warn or just ignore?
+                    // Let's implicit add if valid? No, too risky.
+                }
+
+                // Construct payload
+                const payload = {
+                    exhibitorId: formData.exhibitorId,
+                    eventId,
+                    items: finalItems.map(i => ({
+                        materialId: i.materialId,
+                        quantity: i.quantity,
+                        focQuantity: i.focQuantity,
+                        suffixes: i.suffixes && i.suffixes.length > 0 ? i.suffixes : undefined
+                    }))
+                };
+
+                result = await allocateBatchMaterials(payload);
+            }
 
             if (result.success) {
                 setOpen(false);
+                setBatchItems([]);
                 setFormData({
                     exhibitorId: 0,
                     materialId: 0,
                     quantity: 1,
+                    focQuantity: 0,
                     isFOC: false,
                 });
                 router.refresh();
             } else {
-                setError(result.error || 'Failed to allocate material');
+                setError(result.error || 'Failed to process request');
             }
-        } catch (err) {
-            setError('An error occurred');
+        } catch (err: any) {
+            setError(err.message || 'An error occurred');
             console.error(err);
         } finally {
             setLoading(false);
@@ -89,9 +290,9 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[600px]">
                         <DialogHeader>
-                            <DialogTitle>Allocate Material</DialogTitle>
+                            <DialogTitle>{editMode ? 'Edit Allocation' : 'Allocate Material'}</DialogTitle>
                             <DialogDescription>
-                                Assign materials to an exhibitor
+                                {editMode ? 'Update existing allocation' : 'Assign materials to an exhibitor'}
                             </DialogDescription>
                         </DialogHeader>
 
@@ -113,12 +314,13 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                         {!scanMode ? (
                             <form onSubmit={handleSubmit}>
                                 <div className="grid gap-4 py-4">
+                                    {/* Exhibitor Selection - Always Visible */}
                                     <div>
                                         <label className="block text-sm font-medium mb-2">Exhibitor *</label>
                                         <Select
                                             value={formData.exhibitorId.toString()}
                                             onValueChange={(value) => setFormData({ ...formData, exhibitorId: parseInt(value) })}
-                                            disabled={loading}
+                                            disabled={loading || batchItems.length > 0} // Lock exhibitor if items added
                                         >
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select exhibitor" />
@@ -133,52 +335,148 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                                         </Select>
                                     </div>
 
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">Material *</label>
-                                        <Select
-                                            value={formData.materialId.toString()}
-                                            onValueChange={(value) => setFormData({ ...formData, materialId: parseInt(value) })}
-                                            disabled={loading}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select material" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {materials.map((mat) => (
-                                                    <SelectItem key={mat.id} value={mat.id.toString()}>
-                                                        {mat.name} - ₹{mat.price}/{mat.unit}
-                                                    </SelectItem>
+                                    {/* Batch List Display */}
+                                    {!editMode && batchItems.length > 0 && (
+                                        <div className="bg-gray-50 rounded-md p-3 border">
+                                            <h4 className="text-sm font-medium text-gray-700 mb-2">Items to Allocate:</h4>
+                                            <div className="space-y-2">
+                                                {batchItems.map((item, idx) => (
+                                                    <div key={item.id} className="flex justify-between items-center bg-white p-2 rounded border text-sm">
+                                                        <div>
+                                                            <span className="font-semibold">{item.materialName}</span>
+                                                            <span className="mx-2 text-gray-400">|</span>
+                                                            <span>Qty: {item.quantity} (FOC: {item.focQuantity})</span>
+                                                        </div>
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => removeFromBatch(item.id)}
+                                                            className="text-red-500 h-6 w-6 p-0 hover:bg-red-50"
+                                                        >
+                                                            <X className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
                                                 ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                                            </div>
+                                        </div>
+                                    )}
 
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">Quantity *</label>
-                                        <Input
-                                            type="number"
-                                            min={1}
-                                            value={formData.quantity}
-                                            onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
-                                            disabled={loading}
-                                        />
-                                    </div>
+                                    <div className="border-t my-2 pt-4">
+                                        <h4 className="text-sm font-semibold mb-3 text-gray-600">
+                                            {editMode ? 'Edit Item' : 'Add Item'}
+                                        </h4>
+                                        <div>
+                                            <label className="block text-sm font-medium mb-2">Material *</label>
+                                            <Select
+                                                value={formData.materialId.toString()}
+                                                onValueChange={(value) => setFormData({ ...formData, materialId: parseInt(value) })}
+                                                disabled={loading}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select material" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {materials.map((mat) => (
+                                                        <SelectItem key={mat.id} value={mat.id.toString()}>
+                                                            {mat.name} - ₹{mat.price}/{mat.unit}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
 
-                                    <div className="flex items-center space-x-2">
-                                        <input
-                                            type="checkbox"
-                                            id="foc"
-                                            checked={formData.isFOC}
-                                            onChange={(e) => setFormData({ ...formData, isFOC: e.target.checked })}
-                                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                            disabled={loading}
-                                        />
-                                        <label
-                                            htmlFor="foc"
-                                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                        >
-                                            Free of Cost (FOC)
-                                        </label>
+                                        <div className="flex items-center space-x-2 my-2">
+                                            <input
+                                                type="checkbox"
+                                                id="trackItems"
+                                                checked={trackItems}
+                                                onChange={(e) => setTrackItems(e.target.checked)}
+                                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                disabled={loading}
+                                            />
+                                            <label
+                                                htmlFor="trackItems"
+                                                className="text-sm font-medium leading-none cursor-pointer"
+                                            >
+                                                Track Specific Items (Enter ID/Suffix)
+                                            </label>
+                                        </div>
+
+                                        {trackItems ? (
+                                            <div>
+                                                <label className="block text-sm font-medium mb-2">Item IDs (Last 3+ digits) *</label>
+                                                <div className="border rounded-md p-2 bg-white focus-within:ring-2 focus-within:ring-blue-500 ring-offset-2">
+                                                    <div className="flex flex-wrap gap-2 mb-2">
+                                                        {itemSuffixes.map((tag, idx) => (
+                                                            <span key={idx} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full flex items-center">
+                                                                {tag}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeSuffix(tag)}
+                                                                    className="ml-1 text-blue-600 hover:text-blue-900"
+                                                                >
+                                                                    <X className="h-3 w-3" />
+                                                                </button>
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                    <Input
+                                                        value={suffixInput}
+                                                        onChange={(e) => setSuffixInput(e.target.value)}
+                                                        onKeyDown={handleSuffixKeyDown}
+                                                        placeholder="Type suffix & Enter (e.g. 001)"
+                                                        className="border-none shadow-none focus-visible:ring-0 p-0 h-auto text-sm"
+                                                        disabled={loading}
+                                                    />
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Matched quantity: {itemSuffixes.length}
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <label className="block text-sm font-medium mb-2">Quantity *</label>
+                                                <Input
+                                                    type="number"
+                                                    min={1}
+                                                    value={formData.quantity}
+                                                    onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                                                    disabled={loading}
+                                                />
+                                            </div>
+                                        )}
+
+                                        <div className="flex items-center gap-4 mt-4 bg-gray-50 p-3 rounded-md">
+                                            <div className="flex-1">
+                                                <label className="block text-sm font-medium mb-1">FOC Quantity (Free)</label>
+                                                <Input
+                                                    type="number"
+                                                    min={0}
+                                                    max={trackItems ? itemSuffixes.length : formData.quantity}
+                                                    value={formData.focQuantity ?? 0}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value === '' ? 0 : parseInt(e.target.value);
+                                                        setFormData({ ...formData, focQuantity: isNaN(val) ? 0 : val });
+                                                    }}
+                                                    disabled={loading}
+                                                    className="bg-white"
+                                                />
+                                            </div>
+                                            <div className="flex-1 pt-6 text-sm text-gray-600">
+                                                <p>Paid: {Math.max(0, (trackItems ? itemSuffixes.length : formData.quantity) - formData.focQuantity)}</p>
+                                                <p>Free: {formData.focQuantity}</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Add Button */}
+                                        <div className="mt-4 flex justify-end">
+                                            {!editMode && (
+                                                <Button type="button" variant="secondary" onClick={addToBatch} disabled={formData.materialId === 0}>
+                                                    Add to List
+                                                </Button>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {error && (
@@ -192,8 +490,17 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                                     <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>
                                         Cancel
                                     </Button>
-                                    <Button type="submit" disabled={loading || formData.exhibitorId === 0 || formData.materialId === 0}>
-                                        {loading ? 'Allocating...' : 'Allocate'}
+                                    {/* Submit Button logic: 
+                                        If Edit Mode: Update
+                                        If Batch Mode: 
+                                            If items in list -> "Allocate All (N)"
+                                            If no items -> "Allocate" (Single)
+                                    */}
+                                    <Button type="submit" disabled={loading || formData.exhibitorId === 0 || (batchItems.length === 0 && formData.materialId === 0)}>
+                                        {loading ?
+                                            (editMode ? 'Updating...' : 'Allocating...') :
+                                            (editMode ? 'Update' : (batchItems.length > 0 ? `Allocate All (${batchItems.length})` : 'Allocate'))
+                                        }
                                     </Button>
                                 </DialogFooter>
                             </form>
@@ -253,8 +560,13 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                                         <div className="text-sm text-gray-900">{allocation.material.name}</div>
                                         <div className="text-sm text-gray-500">{allocation.material.unit}</div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        {allocation.quantity}
+                                    <td className="px-6 py-4 text-sm text-gray-900">
+                                        <div className="font-medium">{allocation.quantity}</div>
+                                        {allocation.items && allocation.items.length > 0 && (
+                                            <div className="text-xs text-gray-500 mt-1 max-w-[200px] break-words">
+                                                {allocation.items.map((i: any) => i.uniqueCode).join(', ')}
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex items-center text-gray-900">
@@ -272,6 +584,31 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {new Date(allocation.createdAt).toLocaleDateString()}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-blue-500 hover:text-blue-700 hover:bg-blue-50 mr-1"
+                                            onClick={() => handleEdit(allocation)}
+                                        >
+                                            <Pencil className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                            onClick={async () => {
+                                                if (confirm('Are you sure you want to delete this allocation? Linked items will be made available again.')) {
+                                                    const res = await deleteMaterialAllocation(allocation.id);
+                                                    if (!res.success) {
+                                                        alert(res.error);
+                                                    }
+                                                }
+                                            }}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
                                     </td>
                                 </tr>
                             ))}

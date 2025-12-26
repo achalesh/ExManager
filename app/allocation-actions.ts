@@ -135,7 +135,8 @@ const allocateMaterialSchema = z.object({
     materialId: z.number().min(1, "Material is required"),
     quantity: z.number().min(1, "Quantity must be at least 1"),
     eventId: z.number().min(1, "Event is required"),
-    isFOC: z.boolean().optional(),
+    focQuantity: z.number().optional(), // New field
+    isFOC: z.boolean().optional(), // Legacy support or explicit full FOC override
 });
 
 export async function allocateMaterial(data: z.infer<typeof allocateMaterialSchema>) {
@@ -147,6 +148,11 @@ export async function allocateMaterial(data: z.infer<typeof allocateMaterialSche
 
     try {
         const parsed = allocateMaterialSchema.parse(data);
+        const { quantity, focQuantity = 0 } = parsed;
+
+        if (focQuantity > quantity) {
+            return { success: false, error: 'FOC Quantity cannot be greater than Total Quantity' };
+        }
 
         const material = await prisma.material.findUnique({
             where: { id: parsed.materialId }
@@ -156,16 +162,35 @@ export async function allocateMaterial(data: z.infer<typeof allocateMaterialSche
             return { success: false, error: 'Material not found' };
         }
 
-        const totalPrice = parsed.isFOC ? 0 : material.price * parsed.quantity;
+        const paidQuantity = quantity - focQuantity;
 
-        await prisma.materialAllocation.create({
-            data: {
-                exhibitorId: parsed.exhibitorId,
-                materialId: parsed.materialId,
-                quantity: parsed.quantity,
-                totalPrice,
-                eventId: parsed.eventId,
-                isFOC: parsed.isFOC || false,
+        await prisma.$transaction(async (tx) => {
+            // 1. Paid Allocation
+            if (paidQuantity > 0) {
+                await tx.materialAllocation.create({
+                    data: {
+                        exhibitorId: parsed.exhibitorId,
+                        materialId: parsed.materialId,
+                        quantity: paidQuantity,
+                        totalPrice: material.price * paidQuantity,
+                        eventId: parsed.eventId,
+                        isFOC: false,
+                    }
+                });
+            }
+
+            // 2. FOC Allocation
+            if (focQuantity > 0) {
+                await tx.materialAllocation.create({
+                    data: {
+                        exhibitorId: parsed.exhibitorId,
+                        materialId: parsed.materialId,
+                        quantity: focQuantity,
+                        totalPrice: 0,
+                        eventId: parsed.eventId,
+                        isFOC: true,
+                    }
+                });
             }
         });
 
@@ -263,6 +288,316 @@ export async function allocateScannedItems(data: z.infer<typeof allocateScannedI
     }
 }
 
+// Allocate specific items by suffix
+const allocateMaterialItemsSchema = z.object({
+    exhibitorId: z.number().min(1, "Exhibitor is required"),
+    materialId: z.number().min(1, "Material is required"),
+    suffixes: z.array(z.string()).min(1, "At least one Item ID is required"),
+    eventId: z.number().min(1, "Event is required"),
+    focQuantity: z.number().optional(),
+});
+
+export async function allocateMaterialItems(data: z.infer<typeof allocateMaterialItemsSchema>) {
+    const session = await getSession();
+
+    if (!session) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const parsed = allocateMaterialItemsSchema.parse(data);
+        const { suffixes, materialId, exhibitorId, eventId, focQuantity = 0 } = parsed;
+
+        if (focQuantity > suffixes.length) {
+            return { success: false, error: 'FOC Quantity cannot be greater than Total Items' };
+        }
+
+        // 1. Fetch all available items for this material
+        const availableItems = await prisma.materialItem.findMany({
+            where: {
+                materialId: materialId,
+                status: 'Available'
+            },
+            include: { material: true }
+        });
+
+        const material = availableItems.length > 0 ? availableItems[0].material : await prisma.material.findUnique({ where: { id: materialId } });
+
+        if (!material) {
+            return { success: false, error: 'Material not found' };
+        }
+
+        // 2. Resolve suffixes to items
+        const matchedItems: any[] = [];
+        const notFoundSuffixes: string[] = [];
+
+        for (const suffix of suffixes) {
+            // Find items ending with this suffix
+            const matches = availableItems.filter(i => i.uniqueCode.endsWith(suffix));
+
+            if (matches.length === 0) {
+                notFoundSuffixes.push(suffix);
+            } else if (matches.length > 1) {
+                return { success: false, error: `Ambiguous ID '${suffix}'. Multiple items found ending with this.` };
+            } else {
+                // Check if we already picked this item (duplicate suffix in input)
+                if (matchedItems.find(i => i.id === matches[0].id)) {
+                    // Duplicate suffix in input, just ignore double counting or error?
+                    // Array of suffixes from UI might contain duplicates? filter unique first.
+                    // user might type 001, 001
+                } else {
+                    matchedItems.push(matches[0]);
+                }
+            }
+        }
+
+        if (notFoundSuffixes.length > 0) {
+            return {
+                success: false,
+                error: `Items not found (or not available) for IDs: ${notFoundSuffixes.join(', ')}`
+            };
+        }
+
+        // 3. Create Allocation(s)
+        const totalItems = matchedItems.length;
+        // Split items into Paid and FOC
+        const focItems = matchedItems.slice(0, focQuantity);
+        const paidItems = matchedItems.slice(focQuantity);
+
+        // We need transactions
+        await prisma.$transaction(async (tx) => {
+
+            // FOC Allocation
+            if (focItems.length > 0) {
+                const allocationFOC = await tx.materialAllocation.create({
+                    data: {
+                        exhibitorId,
+                        materialId,
+                        quantity: focItems.length,
+                        totalPrice: 0,
+                        eventId,
+                        isFOC: true,
+                    }
+                });
+
+                await tx.materialItem.updateMany({
+                    where: { id: { in: focItems.map(i => i.id) } },
+                    data: {
+                        status: 'Allocated',
+                        activeAllocationId: allocationFOC.id
+                    }
+                });
+            }
+
+            // Paid Allocation
+            if (paidItems.length > 0) {
+                const allocationPaid = await tx.materialAllocation.create({
+                    data: {
+                        exhibitorId,
+                        materialId,
+                        quantity: paidItems.length,
+                        totalPrice: material.price * paidItems.length,
+                        eventId,
+                        isFOC: false,
+                    }
+                });
+
+                await tx.materialItem.updateMany({
+                    where: { id: { in: paidItems.map(i => i.id) } },
+                    data: {
+                        status: 'Allocated',
+                        activeAllocationId: allocationPaid.id
+                    }
+                });
+            }
+        });
+
+        revalidatePath('/dashboard/allocate-material');
+        return { success: true };
+
+    } catch (error) {
+        console.error('Error allocating specific items:', error);
+        return { success: false, error: 'Failed to allocate items' };
+    }
+}
+
+export async function deleteMaterialAllocation(allocationId: number) {
+    const session = await getSession();
+
+    if (!session) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const allocation = await prisma.materialAllocation.findUnique({
+            where: { id: allocationId },
+            include: { items: true }
+        });
+
+        if (!allocation) {
+            return { success: false, error: 'Allocation not found' };
+        }
+
+        await prisma.$transaction(async (tx) => {
+            // 1. If there are specific items linked, restore them to Available
+            if (allocation.items.length > 0) {
+                await tx.materialItem.updateMany({
+                    where: { activeAllocationId: allocationId },
+                    data: {
+                        status: 'Available',
+                        activeAllocationId: null
+                    }
+                });
+            }
+
+            // 2. Delete the allocation
+            await tx.materialAllocation.delete({
+                where: { id: allocationId }
+            });
+        });
+
+        revalidatePath('/dashboard/allocate-material');
+        return { success: true };
+
+    } catch (error) {
+        console.error('Error deleting material allocation:', error);
+        return { success: false, error: 'Failed to delete allocation' };
+    }
+}
+
+// Update Allocation
+const updateMaterialAllocationSchema = z.object({
+    allocationId: z.number().min(1, "Allocation ID is required"),
+    exhibitorId: z.number().min(1, "Exhibitor is required"),
+    materialId: z.number().min(1, "Material is required"),
+    quantity: z.number().min(1, "Quantity must be at least 1"),
+    suffixes: z.array(z.string()).optional(), // For tracked items
+    eventId: z.number().min(1, "Event is required"),
+    isFOC: z.boolean().optional(),
+});
+
+export async function updateMaterialAllocation(data: z.infer<typeof updateMaterialAllocationSchema>) {
+    const session = await getSession();
+
+    if (!session) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const parsed = updateMaterialAllocationSchema.parse(data);
+        const { allocationId, suffixes = [] } = parsed;
+
+        const allocation = await prisma.materialAllocation.findUnique({
+            where: { id: allocationId },
+            include: { items: true, material: true }
+        });
+
+        if (!allocation) {
+            return { success: false, error: 'Allocation not found' };
+        }
+
+        // Determine if this is a tracked allocation (based on existing items or new suffixes)
+        // If it WAS tracked (has items) OR matches logic for tracking now? 
+        // Logic: if suffixes provided > 0, treat as tracked. If original had items, treat as tracked.
+
+        // Simplified Logic:
+        // 1. If it has tracked items, we must handle item delta.
+        // 2. If it's pure number based, just update number.
+
+        await prisma.$transaction(async (tx) => {
+            // Handle Tracked Items
+            if (suffixes.length > 0 || allocation.items.length > 0) {
+                // 1. Identify Removed Items
+                const oldSuffixes = allocation.items.map(i => i.uniqueCode);
+                // We need to compare *full unique codes* if possible, or just suffixes if that's how we track.
+                // But wait, the input is 'suffixes'.
+                // If the item already exists, we know its ID.
+                // The UI passes suffixes (e.g. "001"). 
+                // We need to map these to actual items.
+
+                // Strategy: 
+                // - Release ALL currently linked items for this allocation.
+                // - Re-allocate based on the new list of suffixes.
+                // - This is safer than computing delta with suffixes vs full codes.
+
+                // 1. Release all currently linked items
+                await tx.materialItem.updateMany({
+                    where: { activeAllocationId: allocationId },
+                    data: { status: 'Available', activeAllocationId: null }
+                });
+
+                // 2. Allocate items for new suffixes
+                if (suffixes.length > 0) {
+                    const availableItems = await tx.materialItem.findMany({
+                        where: {
+                            materialId: parsed.materialId,
+                            status: 'Available'
+                        }
+                    });
+
+                    const matchedItemsIds: number[] = [];
+                    const notFound: string[] = [];
+
+                    for (const suffix of suffixes) {
+                        const match = availableItems.find(i => i.uniqueCode.endsWith(suffix));
+                        // NOTE: We might have just released some items in step 1, so we should actually
+                        // fetch ALL items for this material that are (Available OR previously linked to this allocation)
+                        // But since we did step 1 inside transaction, they ARE 'Available' now in DB state 
+                        // (Prisma transactions might need interactive check, but here we run queries sequentially inside tx).
+                        // Wait, `availableItems` query above will see the updates from step 1? 
+                        // Yes, interactive transactions see their own writes.
+
+                        if (match) {
+                            if (!matchedItemsIds.includes(match.id)) {
+                                matchedItemsIds.push(match.id);
+                            }
+                        } else {
+                            notFound.push(suffix);
+                        }
+                    }
+
+                    if (notFound.length > 0) {
+                        throw new Error(`Items not found for IDs: ${notFound.join(', ')}`);
+                    }
+
+                    if (matchedItemsIds.length !== suffixes.length) {
+                        // Should verify no duplicates in input
+                    }
+
+                    // Update status to Allocated
+                    await tx.materialItem.updateMany({
+                        where: { id: { in: matchedItemsIds } },
+                        data: { status: 'Allocated', activeAllocationId: allocationId }
+                    });
+                }
+            }
+
+            // Update Allocation Record
+            // If tracked, quantity is suffixes.length. Else, parsed.quantity.
+            const newQuantity = (suffixes.length > 0) ? suffixes.length : parsed.quantity;
+            const newTotalPrice = parsed.isFOC ? 0 : allocation.material.price * newQuantity;
+
+            await tx.materialAllocation.update({
+                where: { id: allocationId },
+                data: {
+                    exhibitorId: parsed.exhibitorId,
+                    materialId: parsed.materialId,
+                    quantity: newQuantity,
+                    totalPrice: newTotalPrice,
+                    isFOC: parsed.isFOC || false,
+                }
+            });
+        });
+
+        revalidatePath('/dashboard/allocate-material');
+        return { success: true };
+
+    } catch (error: any) {
+        console.error('Error updating material allocation:', error);
+        return { success: false, error: error.message || 'Failed to update allocation' };
+    }
+}
+
 export async function getMaterialAllocations(eventId?: number) {
     const session = await getSession();
 
@@ -282,7 +617,8 @@ export async function getMaterialAllocations(eventId?: number) {
         },
         include: {
             material: true,
-            exhibitor: true
+            exhibitor: true,
+            items: true
         },
         orderBy: {
             createdAt: 'desc'
