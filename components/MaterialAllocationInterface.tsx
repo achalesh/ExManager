@@ -94,9 +94,9 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
         setFormData({
             exhibitorId: allocation.exhibitorId,
             materialId: allocation.materialId,
-            quantity: allocation.quantity,
             focQuantity: 0, // Edit mode doesn't support split edit yet
-            isFOC: allocation.isFOC
+            isFOC: allocation.isFOC,
+            billNumber: allocation.billNumber || '' // Add billNumber here
         });
 
         // Handle tracked items
