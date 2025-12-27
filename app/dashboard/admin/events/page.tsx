@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getEvents } from '@/app/actions';
 import { CreateEventDialog } from '@/components/CreateEventDialog';
+import { EditEventDialog } from '@/components/EditEventDialog';
+import { DeleteEventButton } from '@/components/DeleteEventButton';
 import { Calendar, MapPin, Users } from 'lucide-react';
 import { setActiveEvent } from '@/lib/auth';
 
@@ -106,10 +108,10 @@ function EventCard({ event, isActive }: { event: any; isActive: boolean }) {
                     )}
                 </div>
                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${event.status === 'Ongoing'
-                        ? 'bg-green-100 text-green-800'
-                        : event.status === 'Upcoming'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-gray-100 text-gray-800'
+                    ? 'bg-green-100 text-green-800'
+                    : event.status === 'Upcoming'
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-gray-100 text-gray-800'
                     }`}>
                     {event.status}
                 </span>
@@ -127,18 +129,35 @@ function EventCard({ event, isActive }: { event: any; isActive: boolean }) {
             </div>
 
             {!isActive && (
-                <form action={async () => {
-                    'use server';
-                    await setActiveEvent(event.id);
-                    redirect('/dashboard');
-                }}>
-                    <button
-                        type="submit"
-                        className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
-                    >
-                        Set as Active Event
-                    </button>
-                </form>
+                <div className="space-y-3">
+                    <form action={async () => {
+                        'use server';
+                        await setActiveEvent(event.id);
+                        redirect('/dashboard');
+                    }}>
+                        <button
+                            type="submit"
+                            className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                        >
+                            Set as Active Event
+                        </button>
+                    </form>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                        <EditEventDialog event={event} />
+                        <DeleteEventButton eventId={event.id} />
+                    </div>
+                </div>
+            )}
+            {isActive && (
+                <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
+                    <EditEventDialog event={event} />
+                    {/* Cannot delete active event usually, but allowing for now with caution or maybe disable it? 
+                        Implementation choice: Allow edit, maybe disable delete if active? 
+                        Let's allow both for Admin, they know what they do. 
+                    */}
+                    <DeleteEventButton eventId={event.id} />
+                </div>
             )}
         </div>
     );

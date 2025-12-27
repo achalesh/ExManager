@@ -39,6 +39,7 @@ interface DashboardNavProps {
         roleName: string;
         activeEventName: string | null;
         activeEventAddress: string | null;
+        activeEventLogo: string | null;
     };
 }
 
@@ -108,15 +109,24 @@ export function DashboardNav({ session }: DashboardNavProps) {
                     <div className="flex items-center">
                         <Link href="/dashboard" className="flex items-center">
                             {session.activeEventName ? (
-                                <div className="flex flex-col">
-                                    <span className="text-xl font-bold text-indigo-600 leading-tight">
-                                        {session.activeEventName}
-                                    </span>
-                                    {session.activeEventAddress && (
-                                        <span className="text-xs text-gray-500 font-medium">
-                                            {session.activeEventAddress}
-                                        </span>
+                                <div className="flex items-center gap-2">
+                                    {session.activeEventLogo && (
+                                        <img
+                                            src={session.activeEventLogo}
+                                            alt="Event Logo"
+                                            className="h-10 w-10 object-contain"
+                                        />
                                     )}
+                                    <div className="flex flex-col">
+                                        <span className="text-xl font-bold text-indigo-600 leading-tight">
+                                            {session.activeEventName}
+                                        </span>
+                                        {session.activeEventAddress && (
+                                            <span className="text-xs text-gray-500 font-medium">
+                                                {session.activeEventAddress}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             ) : (
                                 <span className="text-xl font-bold text-indigo-600">Event Manager</span>

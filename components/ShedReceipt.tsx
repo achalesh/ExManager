@@ -87,6 +87,15 @@ export function ShedReceipt({ open, onOpenChange, allocations }: ShedReceiptProp
                     <div className="text-center border-b pb-4 mb-4">
                         {event && (
                             <>
+                                {event.logo && (
+                                    <div className="flex justify-center mb-2">
+                                        <img
+                                            src={event.logo}
+                                            alt="Event Logo"
+                                            className="h-16 object-contain"
+                                        />
+                                    </div>
+                                )}
                                 <h3 className="text-2xl font-bold uppercase tracking-wide text-center">{event.name}</h3>
                                 <p className="text-sm text-gray-600 mb-2">{event.location}</p>
                             </>

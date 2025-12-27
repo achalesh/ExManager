@@ -14,6 +14,10 @@ const eventSchema = z.object({
     endDate: z.string(),
 });
 
+const updateEventSchema = eventSchema.extend({
+    id: z.coerce.number(),
+});
+
 const categorySchema = z.object({
     name: z.string().min(2),
     price: z.coerce.number().min(0),
@@ -125,6 +129,68 @@ export async function getEvent(id: number) {
             }
         }
     });
+}
+
+export async function updateEvent(formData: FormData) {
+    try {
+        const id = formData.get('id');
+        const data = {
+            id: id,
+            name: formData.get('name') as string,
+            location: formData.get('location') as string,
+            startDate: formData.get('startDate') as string,
+            endDate: formData.get('endDate') as string,
+        };
+        const status = (formData.get('status') as string) || 'Upcoming';
+
+        const parsed = updateEventSchema.parse(data);
+
+        const logo = formData.get('logo') as File | null;
+        let logoUrl = undefined;
+
+        if (logo && logo.size > 0) {
+            const buffer = Buffer.from(await logo.arrayBuffer());
+            const filename = `${Date.now()}_${logo.name.replace(/\s/g, '_')}`;
+            const uploadDir = join(cwd(), 'public', 'uploads', 'events');
+            await mkdir(uploadDir, { recursive: true });
+            await writeFile(join(uploadDir, filename), buffer);
+            logoUrl = `/uploads/events/${filename}`;
+        }
+
+        await prisma.event.update({
+            where: { id: parsed.id },
+            data: {
+                name: parsed.name,
+                location: parsed.location,
+                startDate: new Date(parsed.startDate),
+                endDate: new Date(parsed.endDate),
+                status: status,
+                ...(logoUrl && { logo: logoUrl }),
+            },
+        });
+        revalidatePath('/');
+        revalidatePath('/dashboard');
+        revalidatePath('/dashboard/admin/events');
+        return { success: true };
+    } catch (error) {
+        console.error('Error updating event:', error);
+        return { success: false, error: 'Failed to update event' };
+    }
+}
+
+export async function deleteEvent(id: number) {
+    try {
+        await prisma.event.delete({
+            where: { id },
+        });
+        revalidatePath('/');
+        revalidatePath('/dashboard');
+        revalidatePath('/dashboard/admin/events');
+        return { success: true };
+    } catch (error) {
+        console.error('Error deleting event:', error);
+        return { success: false, error: 'Failed to delete event. It may have related data.' };
+    }
 }
 
 // Category Actions

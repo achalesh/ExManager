@@ -6,6 +6,8 @@ import {
     DialogContent,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 interface ElectricalReceiptProps {
     open: boolean;
@@ -22,6 +24,8 @@ export function ElectricalReceipt({ open, onOpenChange, allocations }: Electrica
     const date = new Date().toLocaleString();
     const grandTotal = allocations.reduce((sum, a) => sum + (a.totalPrice || 0), 0);
 
+    const [receiptNumber, setReceiptNumber] = React.useState('');
+
     const handlePrint = () => {
         window.print();
     };
@@ -32,6 +36,7 @@ export function ElectricalReceipt({ open, onOpenChange, allocations }: Electrica
         let message = `Event: ${event?.name || 'N/A'}\n`;
         message += `${event?.location || ''}\n`;
         message += `*Receipt of Electrical*\n`;
+        if (receiptNumber) message += `Receipt No: ${receiptNumber}\n`;
         message += `Date: ${date}\n\n`;
 
         message += `*Exhibitor:* ${exhibitor.name}\n`;
@@ -91,12 +96,34 @@ export function ElectricalReceipt({ open, onOpenChange, allocations }: Electrica
                     <div className="text-center border-b pb-4 mb-4">
                         {event && (
                             <>
+                                {event.logo && (
+                                    <div className="flex justify-center mb-2">
+                                        <img
+                                            src={event.logo}
+                                            alt="Event Logo"
+                                            className="h-16 object-contain"
+                                        />
+                                    </div>
+                                )}
                                 <h3 className="text-2xl font-bold uppercase tracking-wide text-center">{event.name}</h3>
                                 <p className="text-sm text-gray-600 mb-2">{event.location}</p>
                             </>
                         )}
                         <DialogTitle className="text-xl font-semibold uppercase tracking-wide text-center border-t pt-2 mt-2">Electrical Receipt</DialogTitle>
+                        {receiptNumber && <p className="text-lg font-semibold mt-1">Receipt No: {receiptNumber}</p>}
                         <p className="text-sm text-gray-500 mt-1">{date}</p>
+                    </div>
+
+                    {/* Receipt Number Input - Hidden in Print */}
+                    <div className="mb-4 no-print flex items-center gap-2 justify-center">
+                        <Label htmlFor="receiptNo" className="text-sm font-semibold whitespace-nowrap">Receipt No:</Label>
+                        <Input
+                            id="receiptNo"
+                            value={receiptNumber}
+                            onChange={(e) => setReceiptNumber(e.target.value)}
+                            className="h-8 w-40"
+                            placeholder="Enter No."
+                        />
                     </div>
 
                     {/* Exhibitor Info */}

@@ -15,6 +15,7 @@ export interface SessionData {
     activeEventId: number | null;
     activeEventName: string | null;
     activeEventAddress: string | null;
+    activeEventLogo: string | null;
 }
 
 // Generate a secure random token
@@ -61,6 +62,7 @@ export async function getSession(): Promise<SessionData | null> {
         activeEventId: session.activeEventId,
         activeEventName: session.activeEvent?.name || null,
         activeEventAddress: session.activeEvent?.location || null,
+        activeEventLogo: session.activeEvent?.logo || null,
     };
 }
 
