@@ -138,6 +138,7 @@ const allocateBatchMaterialsSchema = z.object({
         quantity: z.number().min(1, "Quantity must be at least 1"),
         focQuantity: z.number().optional(),
         suffixes: z.array(z.string()).optional(),
+        billNumber: z.string().optional(),
     })).min(1, "At least one item is required"),
 });
 
@@ -156,7 +157,7 @@ export async function allocateBatchMaterials(data: z.infer<typeof allocateBatchM
 
         await prisma.$transaction(async (tx) => {
             for (const item of items) {
-                const { materialId, quantity, focQuantity = 0, suffixes } = item;
+                const { materialId, quantity, focQuantity = 0, suffixes, billNumber } = item;
 
                 // Validate FOC
                 if (focQuantity > quantity) {
@@ -210,6 +211,7 @@ export async function allocateBatchMaterials(data: z.infer<typeof allocateBatchM
                                 totalPrice: 0,
                                 eventId,
                                 isFOC: true,
+                                billNumber: billNumber || undefined,
                             },
                         });
                         await tx.materialItem.updateMany({
@@ -271,6 +273,7 @@ export async function allocateBatchMaterials(data: z.infer<typeof allocateBatchM
                                 totalPrice: 0,
                                 eventId,
                                 isFOC: true,
+                                billNumber: billNumber || undefined,
                             }
                         });
                         createdIds.push(alloc.id);
@@ -673,6 +676,7 @@ const updateMaterialAllocationSchema = z.object({
     suffixes: z.array(z.string()).optional(), // For tracked items
     eventId: z.number().min(1, "Event is required"),
     isFOC: z.boolean().optional(),
+    billNumber: z.string().optional(), // New field
 });
 
 export async function updateMaterialAllocation(data: z.infer<typeof updateMaterialAllocationSchema>) {
@@ -684,7 +688,7 @@ export async function updateMaterialAllocation(data: z.infer<typeof updateMateri
 
     try {
         const parsed = updateMaterialAllocationSchema.parse(data);
-        const { allocationId, suffixes = [] } = parsed;
+        const { allocationId, suffixes = [], billNumber } = parsed;
 
         const allocation = await prisma.materialAllocation.findUnique({
             where: { id: allocationId },
@@ -784,6 +788,7 @@ export async function updateMaterialAllocation(data: z.infer<typeof updateMateri
                     quantity: newQuantity,
                     totalPrice: newTotalPrice,
                     isFOC: parsed.isFOC || false,
+                    billNumber: billNumber || undefined, // Update if provided
                 }
             });
         });
@@ -1150,6 +1155,7 @@ const allocateBatchElectricalSchema = z.object({
     items: z.array(z.object({
         electricalItemId: z.number().min(1, "Electrical Item is required"),
         quantity: z.number().min(1, "Quantity must be at least 1"),
+        billNumber: z.string().optional(),
     })).min(1, "At least one item is required"),
 });
 
@@ -1186,7 +1192,8 @@ export async function allocateBatchElectrical(data: z.infer<typeof allocateBatch
                         quantity: item.quantity,
                         totalPrice,
                         totalWattage,
-                        eventId
+                        eventId,
+                        billNumber: item.billNumber || undefined,
                     }
                 });
                 createdIds.push(allocation.id);
@@ -1238,6 +1245,7 @@ const updateElectricalAllocationSchema = z.object({
     electricalItemId: z.number().min(1, "Electrical Item is required"),
     quantity: z.number().min(1, "Quantity must be at least 1"),
     eventId: z.number().min(1, "Event is required"),
+    billNumber: z.string().optional(), // New field
 });
 
 export async function updateElectricalAllocation(data: z.infer<typeof updateElectricalAllocationSchema>) {
@@ -1249,7 +1257,7 @@ export async function updateElectricalAllocation(data: z.infer<typeof updateElec
 
     try {
         const parsed = updateElectricalAllocationSchema.parse(data);
-        const { allocationId, electricalItemId, quantity } = parsed;
+        const { allocationId, electricalItemId, quantity, billNumber } = parsed;
 
         const electricalItem = await prisma.electricalItem.findUnique({
             where: { id: electricalItemId }
@@ -1270,7 +1278,8 @@ export async function updateElectricalAllocation(data: z.infer<typeof updateElec
                 quantity: parsed.quantity,
                 totalPrice,
                 totalWattage,
-                eventId: parsed.eventId
+                eventId: parsed.eventId,
+                billNumber: billNumber || undefined, // Update if provided
             }
         });
 
@@ -1279,5 +1288,140 @@ export async function updateElectricalAllocation(data: z.infer<typeof updateElec
     } catch (error: any) {
         console.error('Error updating electrical allocation:', error);
         return { success: false, error: error.message || 'Failed to update allocation' };
+    }
+}
+
+// Delete all material allocations for an exhibitor
+export async function deleteExhibitorMaterialAllocations(exhibitorId: number, eventId: number) {
+    const session = await getSession();
+
+    if (!session) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const allocations = await prisma.materialAllocation.findMany({
+            where: {
+                exhibitorId: exhibitorId,
+                eventId: eventId
+            },
+            include: { items: true }
+        });
+
+        if (allocations.length === 0) {
+            return { success: true }; // Nothing to delete
+        }
+
+        await prisma.$transaction(async (tx) => {
+            // 1. Release all tracked items
+            for (const alloc of allocations) {
+                if (alloc.items.length > 0) {
+                    await tx.materialItem.updateMany({
+                        where: { activeAllocationId: alloc.id },
+                        data: {
+                            status: 'Available',
+                            activeAllocationId: null
+                        }
+                    });
+                }
+            }
+
+            // 2. Delete all allocations
+            await tx.materialAllocation.deleteMany({
+                where: {
+                    exhibitorId: exhibitorId,
+                    eventId: eventId
+                }
+            });
+        });
+
+        revalidatePath('/dashboard/allocate-material');
+        return { success: true };
+
+    } catch (error) {
+        console.error('Error deleting exhibitor material allocations:', error);
+        return { success: false, error: 'Failed to delete allocations' };
+    }
+}
+
+// Delete all electrical allocations for an exhibitor
+export async function deleteExhibitorElectricalAllocations(exhibitorId: number, eventId: number) {
+    const session = await getSession();
+
+    if (!session) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        await prisma.electricalAllocation.deleteMany({
+            where: {
+                exhibitorId: exhibitorId,
+                eventId: eventId
+            }
+        });
+
+        revalidatePath('/dashboard/allocate-electrical');
+        return { success: true };
+
+    } catch (error) {
+        console.error('Error deleting exhibitor electrical allocations:', error);
+        return { success: false, error: 'Failed to delete allocations' };
+    }
+}
+
+
+// Update Bill Number for all material allocations of an exhibitor
+export async function updateExhibitorMaterialBillNumber(exhibitorId: number, eventId: number, billNumber: string) {
+    const session = await getSession();
+
+    if (!session) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        await prisma.materialAllocation.updateMany({
+            where: {
+                exhibitorId: exhibitorId,
+                eventId: eventId
+            },
+            data: {
+                billNumber: billNumber
+            }
+        });
+
+        revalidatePath('/dashboard/allocate-material');
+        return { success: true };
+
+    } catch (error) {
+        console.error('Error updating material bill number:', error);
+        return { success: false, error: 'Failed to update bill number' };
+    }
+}
+
+// Update Bill Number for all electrical allocations of an exhibitor
+export async function updateExhibitorElectricalBillNumber(exhibitorId: number, eventId: number, billNumber: string) {
+    const session = await getSession();
+
+    if (!session) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        await prisma.electricalAllocation.updateMany({
+            where: {
+                exhibitorId: exhibitorId,
+                eventId: eventId
+            },
+            data: {
+                billNumber: billNumber
+            }
+        });
+
+        revalidatePath('/dashboard/allocate-electrical');
+        return { success: true };
+
+    } catch (error) {
+        console.error('Error updating electrical bill number:', error);
+        return { success: false, error: 'Failed to update bill number' };
     }
 }

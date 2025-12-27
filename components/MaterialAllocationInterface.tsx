@@ -20,8 +20,9 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { Plus, Package, IndianRupee } from 'lucide-react';
-import { allocateMaterial, allocateScannedItems, allocateMaterialItems, deleteMaterialAllocation, updateMaterialAllocation, allocateBatchMaterials } from '@/app/allocation-actions';
+import { allocateMaterial, allocateScannedItems, allocateMaterialItems, deleteMaterialAllocation, updateMaterialAllocation, allocateBatchMaterials, deleteExhibitorMaterialAllocations, updateExhibitorMaterialBillNumber } from '@/app/allocation-actions';
 import { Scan, X, Trash2, Pencil, Printer } from 'lucide-react';
 import { MaterialReceipt } from './MaterialReceipt';
 
@@ -128,6 +129,7 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                 quantity: 1,
                 focQuantity: 0,
                 isFOC: false,
+                billNumber: '',
             });
             setTrackItems(true);
             setItemSuffixes([]);
@@ -143,6 +145,29 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
     // Receipt State
     const [showReceipt, setShowReceipt] = useState(false);
     const [receiptData, setReceiptData] = useState<any[]>([]);
+
+    const [isBulkEditDialogOpen, setIsBulkEditDialogOpen] = useState(false);
+    const [bulkEditExhibitor, setBulkEditExhibitor] = useState<any>(null);
+    const [bulkBillNumber, setBulkBillNumber] = useState('');
+
+    const handleBulkEdit = (group: any) => {
+        setBulkEditExhibitor(group.exhibitor);
+        setBulkBillNumber('');
+        setIsBulkEditDialogOpen(true);
+    };
+
+    const submitBulkEdit = async () => {
+        if (!bulkEditExhibitor) return;
+
+        const res = await updateExhibitorMaterialBillNumber(bulkEditExhibitor.id, eventId, bulkBillNumber);
+        if (res.success) {
+            setIsBulkEditDialogOpen(false);
+            setBulkEditExhibitor(null);
+            setBulkBillNumber('');
+        } else {
+            alert(res.error);
+        }
+    };
 
     const addToBatch = () => {
         // Validate current form
@@ -179,7 +204,8 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
             quantity: trackItems ? itemSuffixes.length : formData.quantity,
             focQuantity: formData.focQuantity,
             suffixes: trackItems ? [...itemSuffixes] : [],
-            isTracked: trackItems
+            isTracked: trackItems,
+            billNumber: formData.billNumber
         };
 
         setBatchItems([...batchItems, newItem]);
@@ -190,7 +216,10 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
             materialId: 0,
             quantity: 1,
             focQuantity: 0,
-            isFOC: false
+            quantity: 1,
+            focQuantity: 0,
+            isFOC: false,
+            billNumber: ''
         }));
         setTrackItems(true);
         setItemSuffixes([]);
@@ -219,7 +248,8 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                     quantity: formData.quantity,
                     suffixes: trackItems ? itemSuffixes : undefined,
                     eventId,
-                    isFOC: formData.isFOC
+                    isFOC: formData.isFOC,
+                    billNumber: formData.billNumber
                 });
             } else {
                 // Batch Allocation
@@ -240,7 +270,8 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                         materialId: formData.materialId,
                         quantity: trackItems ? itemSuffixes.length : formData.quantity,
                         focQuantity: formData.focQuantity,
-                        suffixes: trackItems ? itemSuffixes : undefined
+                        suffixes: trackItems ? itemSuffixes : undefined,
+                        billNumber: formData.billNumber
                     });
                 }
 
@@ -260,7 +291,8 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                         materialId: i.materialId,
                         quantity: i.quantity,
                         focQuantity: i.focQuantity,
-                        suffixes: i.suffixes && i.suffixes.length > 0 ? i.suffixes : undefined
+                        suffixes: i.suffixes && i.suffixes.length > 0 ? i.suffixes : undefined,
+                        billNumber: i.billNumber
                     }))
                 };
 
@@ -585,7 +617,20 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                                     <td className="px-6 py-4">
                                         <div className="text-sm font-medium text-gray-900">
                                             {group.exhibitor.name}
+                                            {(() => {
+                                                const bills = Array.from(new Set(group.items.map((i: any) => i.billNumber).filter(Boolean)));
+                                                return bills.length > 0 ? (
+                                                    <span className="ml-2 text-green-600 text-xs font-semibold">
+                                                        (Bill: {bills.join(', ')})
+                                                    </span>
+                                                ) : null;
+                                            })()}
                                         </div>
+                                        {group.exhibitor.faciaName && (
+                                            <div className="text-xs text-gray-600 font-medium">
+                                                ({group.exhibitor.faciaName})
+                                            </div>
+                                        )}
                                         <div className="text-xs text-gray-500 mt-1">
                                             Last Updated: {new Date(group.latestDate).toLocaleDateString('en-GB')}
                                         </div>
@@ -607,6 +652,11 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                                                         {allocation.items && allocation.items.length > 0 && (
                                                             <div className="text-xs text-blue-600 mt-0.5">
                                                                 IDs: {allocation.items.map((i: any) => i.uniqueCode.split('-').pop()).join(', ')}
+                                                            </div>
+                                                        )}
+                                                        {allocation.billNumber && (
+                                                            <div className="text-xs text-green-600 mt-0.5 font-medium">
+                                                                Bill No: {allocation.billNumber}
                                                             </div>
                                                         )}
                                                     </div>
@@ -651,18 +701,43 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-right whitespace-nowrap">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => {
-                                                setReceiptData(group.items);
-                                                setShowReceipt(true);
-                                            }}
-                                            className="text-xs"
-                                        >
-                                            <Printer className="h-3 w-3 mr-1" />
-                                            Print Receipt
-                                        </Button>
+                                        <div className="flex flex-col gap-2 items-end">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                    setReceiptData(group.items);
+                                                    setShowReceipt(true);
+                                                }}
+                                                className="text-xs w-full"
+                                            >
+                                                <Printer className="h-3 w-3 mr-1" />
+                                                Print Bill
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleBulkEdit(group)}
+                                                className="text-xs w-full text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                                            >
+                                                <Pencil className="h-3 w-3 mr-1" />
+                                                Edit Bill No
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={async () => {
+                                                    if (confirm(`Are you sure you want to delete ALL material allocations for ${group.exhibitor.name}? This cannot be undone.`)) {
+                                                        const res = await deleteExhibitorMaterialAllocations(group.exhibitor.id, eventId);
+                                                        if (!res.success) alert(res.error);
+                                                    }
+                                                }}
+                                                className="text-xs w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                            >
+                                                <Trash2 className="h-3 w-3 mr-1" />
+                                                Delete All
+                                            </Button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -670,6 +745,34 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                     </table>
                 </div>
             )}
+
+            <Dialog open={isBulkEditDialogOpen} onOpenChange={setIsBulkEditDialogOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Update Common Bill Number</DialogTitle>
+                        <DialogDescription>
+                            Enter a bill number to apply to ALL material allocations for {bulkEditExhibitor?.name}.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="bulk-billNumber" className="text-right">
+                                Bill Number
+                            </Label>
+                            <Input
+                                id="bulk-billNumber"
+                                value={bulkBillNumber}
+                                onChange={(e) => setBulkBillNumber(e.target.value)}
+                                className="col-span-3"
+                                placeholder="Enter Bill No."
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button onClick={submitBulkEdit}>Update All</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <MaterialReceipt
                 open={showReceipt}

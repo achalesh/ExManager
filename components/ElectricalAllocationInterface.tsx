@@ -20,9 +20,10 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { Plus, Zap, IndianRupee, Printer, Trash2, Pencil } from 'lucide-react';
 import { ElectricalReceipt } from './ElectricalReceipt';
-import { allocateElectrical, allocateBatchElectrical, deleteElectricalAllocation, updateElectricalAllocation } from '@/app/allocation-actions';
+import { allocateElectrical, allocateBatchElectrical, deleteElectricalAllocation, updateElectricalAllocation, deleteExhibitorElectricalAllocations, updateExhibitorElectricalBillNumber } from '@/app/allocation-actions';
 
 interface ElectricalAllocationInterfaceProps {
     items: any[];
@@ -50,6 +51,29 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
     const [showReceipt, setShowReceipt] = useState(false);
     const [receiptData, setReceiptData] = useState<any[]>([]);
 
+    const [isBulkEditDialogOpen, setIsBulkEditDialogOpen] = useState(false);
+    const [bulkEditExhibitor, setBulkEditExhibitor] = useState<any>(null);
+    const [bulkBillNumber, setBulkBillNumber] = useState('');
+
+    const handleBulkEdit = (group: any) => {
+        setBulkEditExhibitor(group.exhibitor);
+        setBulkBillNumber('');
+        setIsBulkEditDialogOpen(true);
+    };
+
+    const submitBulkEdit = async () => {
+        if (!bulkEditExhibitor) return;
+
+        const res = await updateExhibitorElectricalBillNumber(bulkEditExhibitor.id, eventId, bulkBillNumber);
+        if (res.success) {
+            setIsBulkEditDialogOpen(false);
+            setBulkEditExhibitor(null);
+            setBulkBillNumber('');
+        } else {
+            alert(res.error);
+        }
+    };
+
     // Reset edit mode when dialog closes
     useEffect(() => {
         if (!open) {
@@ -59,6 +83,7 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                 exhibitorId: 0,
                 electricalItemId: 0,
                 quantity: 1,
+                billNumber: '',
             });
             setPendingItems([]);
             setError('');
@@ -80,10 +105,11 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
         if (formData.electricalItemId > 0 && formData.quantity > 0) {
             setPendingItems([...pendingItems, {
                 electricalItemId: formData.electricalItemId,
-                quantity: formData.quantity
+                quantity: formData.quantity,
+                billNumber: formData.billNumber
             }]);
             // Reset item selection but keep exhibitor
-            setFormData({ ...formData, electricalItemId: 0, quantity: 1 });
+            setFormData({ ...formData, electricalItemId: 0, quantity: 1, billNumber: '' });
         }
     };
 
@@ -105,7 +131,8 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                     exhibitorId: formData.exhibitorId,
                     electricalItemId: formData.electricalItemId,
                     quantity: formData.quantity,
-                    eventId
+                    eventId,
+                    billNumber: formData.billNumber
                 });
 
                 if (result.success) {
@@ -122,7 +149,11 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                         const result = await allocateBatchElectrical({
                             exhibitorId: formData.exhibitorId,
                             eventId,
-                            items: [{ electricalItemId: formData.electricalItemId, quantity: formData.quantity }]
+                            items: [{
+                                electricalItemId: formData.electricalItemId,
+                                quantity: formData.quantity,
+                                billNumber: formData.billNumber || undefined
+                            }]
                         });
                         if (result.success) {
                             setOpen(false);
@@ -236,6 +267,15 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                                             min={1}
                                             value={formData.quantity}
                                             onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-2">Bill No (Optional)</label>
+                                        <Input
+                                            value={formData.billNumber || ''}
+                                            onChange={(e) => setFormData({ ...formData, billNumber: e.target.value })}
+                                            placeholder="e.g. BILL-001"
+                                            disabled={loading}
                                         />
                                     </div>
                                 </div>
@@ -352,7 +392,20 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                                     <td className="px-6 py-4">
                                         <div className="text-sm font-medium text-gray-900">
                                             {group.exhibitor.name}
+                                            {(() => {
+                                                const bills = Array.from(new Set(group.items.map((i: any) => i.billNumber).filter(Boolean)));
+                                                return bills.length > 0 ? (
+                                                    <span className="ml-2 text-green-600 text-xs font-semibold">
+                                                        (Bill: {bills.join(', ')})
+                                                    </span>
+                                                ) : null;
+                                            })()}
                                         </div>
+                                        {group.exhibitor.faciaName && (
+                                            <div className="text-xs text-gray-600 font-medium">
+                                                ({group.exhibitor.faciaName})
+                                            </div>
+                                        )}
                                         <div className="text-xs text-gray-500 mt-1">
                                             Last Updated: {new Date(group.latestDate).toLocaleDateString('en-GB')}
                                         </div>
@@ -417,18 +470,43 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-right whitespace-nowrap">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => {
-                                                setReceiptData(group.items);
-                                                setShowReceipt(true);
-                                            }}
-                                            className="text-xs"
-                                        >
-                                            <Printer className="h-3 w-3 mr-1" />
-                                            Print Receipt
-                                        </Button>
+                                        <div className="flex flex-col gap-2 items-end">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                    setReceiptData(group.items);
+                                                    setShowReceipt(true);
+                                                }}
+                                                className="text-xs w-full"
+                                            >
+                                                <Printer className="h-3 w-3 mr-1" />
+                                                Print Bill
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleBulkEdit(group)}
+                                                className="text-xs w-full text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                                            >
+                                                <Pencil className="h-3 w-3 mr-1" />
+                                                Edit Bill No
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={async () => {
+                                                    if (confirm(`Are you sure you want to delete ALL electrical allocations for ${group.exhibitor.name}? This cannot be undone.`)) {
+                                                        const res = await deleteExhibitorElectricalAllocations(group.exhibitor.id, eventId);
+                                                        if (!res.success) alert(res.error);
+                                                    }
+                                                }}
+                                                className="text-xs w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                            >
+                                                <Trash2 className="h-3 w-3 mr-1" />
+                                                Delete All
+                                            </Button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -436,6 +514,34 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                     </table>
                 </div>
             )}
+
+            <Dialog open={isBulkEditDialogOpen} onOpenChange={setIsBulkEditDialogOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Update Common Bill Number</DialogTitle>
+                        <DialogDescription>
+                            Enter a bill number to apply to ALL electrical allocations for {bulkEditExhibitor?.name}.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="bulk-billNumber" className="text-right">
+                                Bill Number
+                            </Label>
+                            <Input
+                                id="bulk-billNumber"
+                                value={bulkBillNumber}
+                                onChange={(e) => setBulkBillNumber(e.target.value)}
+                                className="col-span-3"
+                                placeholder="Enter Bill No."
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button onClick={submitBulkEdit}>Update All</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <ElectricalReceipt
                 open={showReceipt}

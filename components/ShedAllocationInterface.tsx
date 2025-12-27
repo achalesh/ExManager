@@ -196,6 +196,11 @@ export function ShedAllocationInterface({ sheds, allocations, exhibitors, eventI
                                         <div className="text-sm font-medium text-gray-900">
                                             {allocation.exhibitor.name}
                                         </div>
+                                        {allocation.exhibitor.faciaName && (
+                                            <div className="text-xs text-gray-600 font-medium">
+                                                ({allocation.exhibitor.faciaName})
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="text-sm text-gray-900">{allocation.shed.name}</div>

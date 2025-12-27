@@ -26,7 +26,7 @@ export function MaterialReceipt({ open, onOpenChange, allocations }: MaterialRec
     const date = new Date().toLocaleString();
     const grandTotal = allocations.reduce((sum, a) => sum + (a.totalPrice || 0), 0);
 
-    const [receiptNumber, setReceiptNumber] = React.useState('');
+    const [receiptNumber, setReceiptNumber] = React.useState(allocations[0]?.billNumber || '');
 
     const handlePrint = () => {
         window.print();
@@ -37,8 +37,8 @@ export function MaterialReceipt({ open, onOpenChange, allocations }: MaterialRec
 
         let message = `Event: ${event?.name || 'N/A'}\n`;
         message += `${event?.location || ''}\n`;
-        message += `*Receipt of Material*\n`;
-        if (receiptNumber) message += `Receipt No: ${receiptNumber}\n`;
+        message += `*Bill of Material*\n`;
+        if (receiptNumber) message += `Bill No: ${receiptNumber}\n`;
         message += `Date: ${date}\n\n`;
 
         message += `*Exhibitor:* ${exhibitor.name}\n`;
@@ -70,7 +70,7 @@ export function MaterialReceipt({ open, onOpenChange, allocations }: MaterialRec
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[600px] h-fit max-h-[85vh] flex flex-col p-0 gap-0 print:shadow-none print:border-none print:max-w-full print:w-full print:h-screen">
+            <DialogContent className="w-[95%] max-w-[600px] h-[90vh] max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden print:shadow-none print:border-none print:max-w-full print:w-full print:h-screen">
                 <style jsx global>{`
                     @media print {
                         body * {
@@ -116,22 +116,12 @@ export function MaterialReceipt({ open, onOpenChange, allocations }: MaterialRec
                                     <p className="text-xs text-gray-600 mb-2">{event.location}</p>
                                 </>
                             )}
-                            <DialogTitle className="text-lg font-semibold uppercase tracking-wide text-center border-t pt-2 mt-2">Material Receipt</DialogTitle>
-                            {receiptNumber && <p className="text-sm font-semibold mt-1">Receipt No: {receiptNumber}</p>}
+                            <DialogTitle className="text-lg font-semibold uppercase tracking-wide text-center border-t pt-2 mt-2">Material Bill</DialogTitle>
+                            {receiptNumber && <p className="text-sm font-semibold mt-1">Bill No: {receiptNumber}</p>}
                             <p className="text-xs text-gray-500 mt-1">{date}</p>
                         </div>
 
-                        {/* Receipt Number Input - Hidden in Print */}
-                        <div className="mb-4 no-print flex items-center gap-2 justify-center">
-                            <Label htmlFor="receiptNo" className="text-xs font-semibold whitespace-nowrap">Receipt No:</Label>
-                            <Input
-                                id="receiptNo"
-                                value={receiptNumber}
-                                onChange={(e) => setReceiptNumber(e.target.value)}
-                                className="h-7 w-32 text-xs"
-                                placeholder="Enter No."
-                            />
-                        </div>
+
 
                         {/* Exhibitor Info */}
                         <div className="mb-4 grid grid-cols-2 gap-4">
@@ -200,15 +190,15 @@ export function MaterialReceipt({ open, onOpenChange, allocations }: MaterialRec
                 </div>
 
                 {/* Sticky Footer Actions */}
-                <div className="p-4 border-t bg-gray-50 flex justify-end space-x-2 no-print shrink-0 rounded-b-lg">
-                    <Button variant="outline" onClick={() => onOpenChange(false)} size="sm">
+                <div className="p-4 border-t bg-gray-50 flex flex-wrap justify-end gap-2 no-print shrink-0 rounded-b-lg">
+                    <Button variant="outline" onClick={() => onOpenChange(false)} size="sm" className="flex-1 sm:flex-none">
                         Close
                     </Button>
-                    <Button variant="outline" onClick={handleWhatsAppShare} size="sm" className="gap-2 border-green-600 text-green-600 hover:bg-green-50">
+                    <Button variant="outline" onClick={handleWhatsAppShare} size="sm" className="flex-1 sm:flex-none gap-2 border-green-600 text-green-600 hover:bg-green-50">
                         <MessageCircle className="h-3.5 w-3.5" />
                         WhatsApp
                     </Button>
-                    <Button onClick={handlePrint} size="sm" className="gap-2">
+                    <Button onClick={handlePrint} size="sm" className="flex-1 sm:flex-none gap-2">
                         <Printer className="h-3.5 w-3.5" />
                         Print
                     </Button>
