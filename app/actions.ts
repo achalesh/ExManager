@@ -3,6 +3,9 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { join } from 'path';
+import { writeFile, mkdir } from 'fs/promises';
+import { cwd } from 'process';
 
 const eventSchema = z.object({
     name: z.string().min(2, "Name must be at least 2 characters"),
@@ -51,16 +54,38 @@ type SpaceData = z.infer<typeof spaceSchema>;
 type ExhibitorData = z.infer<typeof exhibitorSchema>;
 type BookingData = z.infer<typeof bookingSchema>;
 
-export async function createEvent(data: EventData & { status?: string }) {
+export async function createEvent(formData: FormData) {
     try {
+        const data = {
+            name: formData.get('name') as string,
+            location: formData.get('location') as string,
+            startDate: formData.get('startDate') as string,
+            endDate: formData.get('endDate') as string,
+        };
+        const status = (formData.get('status') as string) || 'Upcoming';
+
         const parsed = eventSchema.parse(data);
+
+        const logo = formData.get('logo') as File | null;
+        let logoUrl = null;
+
+        if (logo && logo.size > 0) {
+            const buffer = Buffer.from(await logo.arrayBuffer());
+            const filename = `${Date.now()}_${logo.name.replace(/\s/g, '_')}`;
+            const uploadDir = join(cwd(), 'public', 'uploads', 'events');
+            await mkdir(uploadDir, { recursive: true });
+            await writeFile(join(uploadDir, filename), buffer);
+            logoUrl = `/uploads/events/${filename}`;
+        }
+
         await prisma.event.create({
             data: {
                 name: parsed.name,
                 location: parsed.location,
                 startDate: new Date(parsed.startDate),
                 endDate: new Date(parsed.endDate),
-                status: data.status || 'Upcoming',
+                status: status,
+                logo: logoUrl,
             },
         });
         revalidatePath('/');

@@ -38,13 +38,15 @@ export function CreateEventDialog() {
         status: 'Upcoming',
     });
 
-    async function handleSubmit(e: React.FormEvent) {
+    async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
         setError('');
         setLoading(true);
 
+        const form = new FormData(e.currentTarget);
+
         try {
-            const result = await createEvent(formData);
+            const result = await createEvent(form);
 
             if (result.success) {
                 setOpen(false);
@@ -88,6 +90,7 @@ export function CreateEventDialog() {
                             <Label htmlFor="name">Event Name *</Label>
                             <Input
                                 id="name"
+                                name="name"
                                 value={formData.name}
                                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                 placeholder="e.g., Annual Trade Fair 2024"
@@ -100,10 +103,22 @@ export function CreateEventDialog() {
                             <Label htmlFor="location">Location *</Label>
                             <Input
                                 id="location"
+                                name="location"
                                 value={formData.location}
                                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                                 placeholder="e.g., Convention Center, Mumbai"
                                 required
+                                disabled={loading}
+                            />
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label htmlFor="logo">Event Logo (Optional)</Label>
+                            <Input
+                                id="logo"
+                                name="logo"
+                                type="file"
+                                accept="image/*"
                                 disabled={loading}
                             />
                         </div>
@@ -113,6 +128,7 @@ export function CreateEventDialog() {
                                 <Label htmlFor="startDate">Start Date *</Label>
                                 <Input
                                     id="startDate"
+                                    name="startDate"
                                     type="date"
                                     value={formData.startDate}
                                     onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
@@ -125,6 +141,7 @@ export function CreateEventDialog() {
                                 <Label htmlFor="endDate">End Date *</Label>
                                 <Input
                                     id="endDate"
+                                    name="endDate"
                                     type="date"
                                     value={formData.endDate}
                                     onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
@@ -138,6 +155,7 @@ export function CreateEventDialog() {
                             <Label htmlFor="status">Status *</Label>
                             <Select
                                 value={formData.status}
+                                name="status"
                                 onValueChange={(value) => setFormData({ ...formData, status: value })}
                                 disabled={loading}
                             >

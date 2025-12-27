@@ -12,6 +12,7 @@ model Event {
   id                     Int                    @id @default(autoincrement())
   name                   String
   location               String
+  logo                   String?                // Path to uploaded logo
   startDate              DateTime
   endDate                DateTime
   status                 String                 @default("Upcoming") // Upcoming, Ongoing, Completed
