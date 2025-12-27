@@ -46,6 +46,7 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
         quantity: 1,
         focQuantity: 0, // Split allocation
         isFOC: false,
+        billNumber: '',
     });
 
     const [trackItems, setTrackItems] = useState(true);
