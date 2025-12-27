@@ -19,7 +19,8 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
-import { Plus, Home, IndianRupee, Ruler } from 'lucide-react';
+import { Plus, Home, IndianRupee, Ruler, Printer } from 'lucide-react';
+import { ShedReceipt } from './ShedReceipt';
 import { allocateShed } from '@/app/allocation-actions';
 
 interface ShedAllocationInterfaceProps {
@@ -39,6 +40,8 @@ export function ShedAllocationInterface({ sheds, allocations, exhibitors, eventI
         exhibitorId: 0,
         shedId: 0,
     });
+    const [showReceipt, setShowReceipt] = useState(false);
+    const [receiptData, setReceiptData] = useState<any[]>([]);
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -57,6 +60,10 @@ export function ShedAllocationInterface({ sheds, allocations, exhibitors, eventI
                     exhibitorId: 0,
                     shedId: 0,
                 });
+                if (result.data) {
+                    setReceiptData(result.data);
+                    setShowReceipt(true);
+                }
                 router.refresh();
             } else {
                 setError(result.error || 'Failed to allocate shed');
@@ -177,6 +184,9 @@ export function ShedAllocationInterface({ sheds, allocations, exhibitors, eventI
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                                     Date
                                 </th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                                    Actions
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -206,12 +216,30 @@ export function ShedAllocationInterface({ sheds, allocations, exhibitors, eventI
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {new Date(allocation.createdAt).toLocaleDateString()}
                                     </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                                setReceiptData([allocation]);
+                                                setShowReceipt(true);
+                                            }}
+                                        >
+                                            <Printer className="h-4 w-4 text-gray-400" />
+                                        </Button>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
             )}
+
+            <ShedReceipt
+                open={showReceipt}
+                onOpenChange={setShowReceipt}
+                allocations={receiptData}
+            />
         </div>
     );
 }

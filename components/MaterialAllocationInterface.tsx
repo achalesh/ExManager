@@ -22,7 +22,8 @@ import {
 } from '@/components/ui/dialog';
 import { Plus, Package, IndianRupee } from 'lucide-react';
 import { allocateMaterial, allocateScannedItems, allocateMaterialItems, deleteMaterialAllocation, updateMaterialAllocation, allocateBatchMaterials } from '@/app/allocation-actions';
-import { Scan, X, Trash2, Pencil } from 'lucide-react';
+import { Scan, X, Trash2, Pencil, Printer } from 'lucide-react';
+import { MaterialReceipt } from './MaterialReceipt';
 
 interface MaterialAllocationInterfaceProps {
     materials: any[];
@@ -46,12 +47,19 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
         isFOC: false,
     });
 
-    const [trackItems, setTrackItems] = useState(false);
+    const [trackItems, setTrackItems] = useState(true);
     const [itemSuffixes, setItemSuffixes] = useState<string[]>([]);
     const [suffixInput, setSuffixInput] = useState('');
 
 
     const addSuffixesFromInput = (input: string) => {
+        if (input.toLowerCase() === 'na') {
+            setTrackItems(false);
+            setItemSuffixes([]);
+            setSuffixInput('');
+            return;
+        }
+
         const parts = input.split(',').map(s => s.trim()).filter(s => s !== '');
         const newSuffixes = parts.filter(p => !itemSuffixes.includes(p));
 
@@ -121,7 +129,7 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                 focQuantity: 0,
                 isFOC: false,
             });
-            setTrackItems(false);
+            setTrackItems(true);
             setItemSuffixes([]);
             setError(''); // Clear any previous errors
             setScanMode(false); // Reset scan mode
@@ -131,6 +139,10 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
 
     // Batch Allocation State
     const [batchItems, setBatchItems] = useState<any[]>([]);
+
+    // Receipt State
+    const [showReceipt, setShowReceipt] = useState(false);
+    const [receiptData, setReceiptData] = useState<any[]>([]);
 
     const addToBatch = () => {
         // Validate current form
@@ -180,7 +192,7 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
             focQuantity: 0,
             isFOC: false
         }));
-        setTrackItems(false);
+        setTrackItems(true);
         setItemSuffixes([]);
         setError('');
         setScanMode(false);
@@ -265,6 +277,11 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                     focQuantity: 0,
                     isFOC: false,
                 });
+                // Open Receipt if data returned
+                if (result.data) {
+                    setReceiptData(result.data);
+                    setShowReceipt(true);
+                }
                 router.refresh();
             } else {
                 setError(result.error || 'Failed to process request');
@@ -288,7 +305,7 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                             Allocate Material
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[600px]">
+                    <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>{editMode ? 'Edit Allocation' : 'Allocate Material'}</DialogTitle>
                             <DialogDescription>
@@ -328,7 +345,7 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                                             <SelectContent>
                                                 {exhibitors.map((ex) => (
                                                     <SelectItem key={ex.id} value={ex.id.toString()}>
-                                                        {ex.name}
+                                                        {ex.name} {ex.faciaName ? `(Facia: ${ex.faciaName})` : ''}
                                                     </SelectItem>
                                                 ))}
                                             </SelectContent>
@@ -370,7 +387,11 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                                             <label className="block text-sm font-medium mb-2">Material *</label>
                                             <Select
                                                 value={formData.materialId.toString()}
-                                                onValueChange={(value) => setFormData({ ...formData, materialId: parseInt(value) })}
+                                                onValueChange={(value) => {
+                                                    setFormData({ ...formData, materialId: parseInt(value), quantity: 1 });
+                                                    setTrackItems(true);
+                                                    setItemSuffixes([]);
+                                                }}
                                                 disabled={loading}
                                             >
                                                 <SelectTrigger>
@@ -386,66 +407,63 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                                             </Select>
                                         </div>
 
-                                        <div className="flex items-center space-x-2 my-2">
-                                            <input
-                                                type="checkbox"
-                                                id="trackItems"
-                                                checked={trackItems}
-                                                onChange={(e) => setTrackItems(e.target.checked)}
-                                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                disabled={loading}
-                                            />
-                                            <label
-                                                htmlFor="trackItems"
-                                                className="text-sm font-medium leading-none cursor-pointer"
-                                            >
-                                                Track Specific Items (Enter ID/Suffix)
-                                            </label>
-                                        </div>
-
-                                        {trackItems ? (
-                                            <div>
-                                                <label className="block text-sm font-medium mb-2">Item IDs (Last 3+ digits) *</label>
-                                                <div className="border rounded-md p-2 bg-white focus-within:ring-2 focus-within:ring-blue-500 ring-offset-2">
-                                                    <div className="flex flex-wrap gap-2 mb-2">
-                                                        {itemSuffixes.map((tag, idx) => (
-                                                            <span key={idx} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full flex items-center">
-                                                                {tag}
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => removeSuffix(tag)}
-                                                                    className="ml-1 text-blue-600 hover:text-blue-900"
-                                                                >
-                                                                    <X className="h-3 w-3" />
-                                                                </button>
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                    <Input
-                                                        value={suffixInput}
-                                                        onChange={(e) => setSuffixInput(e.target.value)}
-                                                        onKeyDown={handleSuffixKeyDown}
-                                                        placeholder="Type suffix & Enter (e.g. 001)"
-                                                        className="border-none shadow-none focus-visible:ring-0 p-0 h-auto text-sm"
-                                                        disabled={loading}
-                                                    />
-                                                </div>
-                                                <p className="text-xs text-gray-500 mt-1">
-                                                    Matched quantity: {itemSuffixes.length}
-                                                </p>
+                                        <div className="mt-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="block text-sm font-medium">
+                                                    {trackItems ? 'Item IDs (Last 3+ digits) *' : 'Quantity *'}
+                                                </label>
+                                                {!trackItems && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setTrackItems(true)}
+                                                        className="text-xs text-blue-600 hover:text-blue-800 underline"
+                                                    >
+                                                        Switch to Tracked
+                                                    </button>
+                                                )}
                                             </div>
-                                        ) : (
-                                            <div>
-                                                <label className="block text-sm font-medium mb-2">Quantity *</label>
+
+                                            {trackItems ? (
+                                                <>
+                                                    <div className="border rounded-md p-2 bg-white focus-within:ring-2 focus-within:ring-blue-500 ring-offset-2">
+                                                        <div className="flex flex-wrap gap-2 mb-2">
+                                                            {itemSuffixes.map((tag, idx) => (
+                                                                <span key={idx} className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full flex items-center">
+                                                                    {tag}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeSuffix(tag)}
+                                                                        className="ml-1 text-blue-600 hover:text-blue-900"
+                                                                    >
+                                                                        <X className="h-3 w-3" />
+                                                                    </button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                        <Input
+                                                            value={suffixInput}
+                                                            onChange={(e) => setSuffixInput(e.target.value)}
+                                                            onKeyDown={handleSuffixKeyDown}
+                                                            placeholder="Type suffix & Enter (or 'na' for bulk)"
+                                                            className="border-none shadow-none focus-visible:ring-0 p-0 h-auto text-sm"
+                                                            disabled={loading}
+                                                        />
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 mt-1">
+                                                        Matched quantity: {itemSuffixes.length}
+                                                    </p>
+                                                </>
+                                            ) : (
                                                 <Input
                                                     type="number"
                                                     min={1}
                                                     value={formData.quantity}
-                                                    onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                                                    onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
+                                                    className="bg-white"
                                                     disabled={loading}
                                                 />
-                                            </div>
-                                        )}
+                                            )}
+                                        </div>
 
                                         <div className="flex items-center gap-4 mt-4 bg-gray-50 p-3 rounded-md">
                                             <div className="flex-1">
@@ -531,83 +549,119 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-1/4">
                                     Exhibitor
                                 </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Material
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-1/2">
+                                    Allocated Material Details
                                 </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Quantity
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                                     Total Price
                                 </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Date
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                                    Actions
                                 </th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {allocations.map((allocation) => (
-                                <tr key={allocation.id} className="hover:bg-gray-50">
-                                    <td className="px-6 py-4 whitespace-nowrap">
+                            {Object.values(allocations.reduce((acc: any, curr: any) => {
+                                const exhId = curr.exhibitorId;
+                                if (!acc[exhId]) {
+                                    acc[exhId] = {
+                                        exhibitor: curr.exhibitor,
+                                        items: [],
+                                        totalPrice: 0,
+                                        latestDate: curr.createdAt
+                                    };
+                                }
+                                acc[exhId].items.push(curr);
+                                acc[exhId].totalPrice += curr.totalPrice;
+                                if (new Date(curr.createdAt) > new Date(acc[exhId].latestDate)) {
+                                    acc[exhId].latestDate = curr.createdAt;
+                                }
+                                return acc;
+                            }, {})).map((group: any) => (
+                                <tr key={group.exhibitor.id} className="hover:bg-gray-50 align-top">
+                                    <td className="px-6 py-4">
                                         <div className="text-sm font-medium text-gray-900">
-                                            {allocation.exhibitor.name}
+                                            {group.exhibitor.name}
+                                        </div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            Last Updated: {new Date(group.latestDate).toLocaleDateString('en-GB')}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="text-sm text-gray-900">{allocation.material.name}</div>
-                                        <div className="text-sm text-gray-500">{allocation.material.unit}</div>
-                                    </td>
-                                    <td className="px-6 py-4 text-sm text-gray-900">
-                                        <div className="font-medium">{allocation.quantity}</div>
-                                        {allocation.items && allocation.items.length > 0 && (
-                                            <div className="text-xs text-gray-500 mt-1 max-w-[200px] break-words">
-                                                {allocation.items.map((i: any) => i.uniqueCode).join(', ')}
-                                            </div>
-                                        )}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="flex items-center text-gray-900">
-                                            {allocation.isFOC || allocation.totalPrice === 0 ? (
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                                    FOC
-                                                </span>
-                                            ) : (
-                                                <>
-                                                    <IndianRupee className="h-4 w-4 mr-1" />
-                                                    {allocation.totalPrice.toFixed(2)}
-                                                </>
-                                            )}
+                                    <td className="px-6 py-4">
+                                        <div className="space-y-3">
+                                            {group.items.map((allocation: any) => (
+                                                <div key={allocation.id} className="group flex items-start justify-between text-sm border-b border-gray-100 pb-2 last:border-0 last:pb-0">
+                                                    <div>
+                                                        <div className="font-medium text-gray-900">
+                                                            {allocation.material.name}
+                                                            <span className="ml-2 text-gray-500 font-normal">
+                                                                (Qty: {allocation.quantity})
+                                                            </span>
+                                                            {allocation.isFOC && (
+                                                                <span className="ml-2 bg-green-100 text-green-800 text-xs px-1.5 py-0.5 rounded">FOC</span>
+                                                            )}
+                                                        </div>
+                                                        {allocation.items && allocation.items.length > 0 && (
+                                                            <div className="text-xs text-blue-600 mt-0.5">
+                                                                IDs: {allocation.items.map((i: any) => i.uniqueCode.split('-').pop()).join(', ')}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 pl-4">
+                                                        <span className="text-gray-600 font-medium whitespace-nowrap">
+                                                            ₹{allocation.totalPrice.toFixed(2)}
+                                                        </span>
+                                                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600"
+                                                                onClick={() => handleEdit(allocation)}
+                                                                title="Edit Item"
+                                                            >
+                                                                <Pencil className="h-3 w-3" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 w-6 p-0 text-gray-400 hover:text-red-600"
+                                                                onClick={async () => {
+                                                                    if (confirm(`Delete ${allocation.quantity} x ${allocation.material.name}?`)) {
+                                                                        const res = await deleteMaterialAllocation(allocation.id);
+                                                                        if (!res.success) alert(res.error);
+                                                                    }
+                                                                }}
+                                                                title="Delete Item"
+                                                            >
+                                                                <Trash2 className="h-3 w-3" />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {new Date(allocation.createdAt).toLocaleDateString()}
+                                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                                        <div className="text-base font-bold text-gray-900">
+                                            <IndianRupee className="h-4 w-4 inline mr-0.5" />
+                                            {group.totalPrice.toFixed(2)}
+                                        </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <td className="px-6 py-4 text-right whitespace-nowrap">
                                         <Button
-                                            variant="ghost"
+                                            variant="outline"
                                             size="sm"
-                                            className="text-blue-500 hover:text-blue-700 hover:bg-blue-50 mr-1"
-                                            onClick={() => handleEdit(allocation)}
-                                        >
-                                            <Pencil className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                                            onClick={async () => {
-                                                if (confirm('Are you sure you want to delete this allocation? Linked items will be made available again.')) {
-                                                    const res = await deleteMaterialAllocation(allocation.id);
-                                                    if (!res.success) {
-                                                        alert(res.error);
-                                                    }
-                                                }
+                                            onClick={() => {
+                                                setReceiptData(group.items);
+                                                setShowReceipt(true);
                                             }}
+                                            className="text-xs"
                                         >
-                                            <Trash2 className="h-4 w-4" />
+                                            <Printer className="h-3 w-3 mr-1" />
+                                            Print Receipt
                                         </Button>
                                     </td>
                                 </tr>
@@ -616,6 +670,12 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                     </table>
                 </div>
             )}
+
+            <MaterialReceipt
+                open={showReceipt}
+                onOpenChange={setShowReceipt}
+                allocations={receiptData}
+            />
         </div>
     );
 
@@ -720,7 +780,7 @@ function ScanAllocationForm({ exhibitors, eventId, onSuccess }: { exhibitors: an
                     <SelectContent>
                         {exhibitors.map((ex) => (
                             <SelectItem key={ex.id} value={ex.id.toString()}>
-                                {ex.name}
+                                {ex.name} {ex.faciaName ? `(Facia: ${ex.faciaName})` : ''}
                             </SelectItem>
                         ))}
                     </SelectContent>

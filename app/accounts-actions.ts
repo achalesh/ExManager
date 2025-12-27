@@ -264,6 +264,133 @@ export async function getDailyTransactions(dateString?: string) {
     }
 }
 
+export async function getRecentTransactions(limit: number = 10) {
+    const session = await getSession();
+    if (!session || !session.activeEventId) return [];
+
+    const eventId = session.activeEventId;
+
+    try {
+        // Fetch last 'limit' items from each source to ensure we get the true global latest
+        // 1. Manual
+        // @ts-ignore
+        const manualPromise = prisma.transaction.findMany({
+            where: { eventId },
+            orderBy: { transactionDate: 'desc' },
+            take: limit
+        });
+
+        // 2. Payments
+        const paymentsPromise = prisma.payment.findMany({
+            where: {
+                OR: [
+                    { invoice: { eventId } },
+                    {
+                        invoiceId: null,
+                        exhibitor: { bookings: { some: { eventId } } }
+                    }
+                ]
+            },
+            orderBy: { paymentDate: 'desc' },
+            take: limit,
+            include: { exhibitor: true }
+        });
+
+        // 3. Settlements
+        const settlementsPromise = prisma.staffTicketAssignment.findMany({
+            where: {
+                staff: { eventId },
+                status: 'Returned'
+            },
+            orderBy: { returnDate: 'desc' },
+            take: limit,
+            include: { staff: true }
+        });
+
+        // 4. Counter Sales
+        const salesPromise = prisma.ticketSale.findMany({
+            where: {
+                eventId,
+                // @ts-ignore
+                source: 'Counter'
+            },
+            orderBy: { createdAt: 'desc' },
+            take: limit
+        });
+
+        const [manual, payments, settlements, sales] = await Promise.all([
+            // @ts-ignore
+            manualPromise,
+            paymentsPromise,
+            settlementsPromise,
+            salesPromise
+        ]);
+
+        const merged = [];
+
+        // Map Manual
+        merged.push(...manual.map((t: any) => ({
+            id: t.id,
+            type: t.type,
+            category: t.category,
+            amount: t.amount,
+            paymentMethod: t.paymentMethod,
+            description: t.description,
+            transactionDate: t.transactionDate,
+            recordedBy: t.recordedBy,
+            source: 'Manual'
+        })));
+
+        // Map Payments
+        merged.push(...payments.map((p: any) => ({
+            id: -1 * p.id,
+            type: 'Income',
+            category: p.category || 'Exhibitor Payment',
+            amount: p.amount,
+            paymentMethod: p.paymentMethod,
+            description: `Received from ${p.exhibitor.name} (RCP: ${p.receiptNumber})`,
+            transactionDate: p.paymentDate,
+            recordedBy: p.collectedBy || 'System',
+            source: 'System'
+        })));
+
+        // Map Settlements
+        merged.push(...settlements.map((s: any) => ({
+            id: -100000 - s.id,
+            type: 'Income',
+            category: 'Ticket Sales',
+            amount: (s.cashReceived || 0) + (s.upiReceived || 0),
+            paymentMethod: 'Cash/UPI',
+            description: `Reconciliation: ${s.staff.name} (${s.seriesLabel})`,
+            transactionDate: s.returnDate!,
+            recordedBy: 'System',
+            source: 'System'
+        })));
+
+        // Map Sales
+        merged.push(...sales.map((s: any) => ({
+            id: -200000 - s.id,
+            type: 'Income',
+            category: 'Ticket Counter',
+            amount: s.totalAmount,
+            paymentMethod: 'Cash',
+            description: `Counter Sale #${s.id}`,
+            transactionDate: s.createdAt,
+            recordedBy: 'Box Office',
+            source: 'System'
+        })));
+
+        // Sort and Limit
+        return merged
+            .sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())
+            .slice(0, limit);
+
+    } catch (error) {
+        console.error("Error fetching recent transactions:", error);
+        return [];
+    }
+}
+
 export async function deleteTransaction(id: number) {
     const session = await getSession();
     if (!session || !['Admin', 'Manager', 'Accountant'].includes(session.roleName)) {

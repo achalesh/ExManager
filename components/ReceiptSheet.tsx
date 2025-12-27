@@ -48,8 +48,20 @@ export function ReceiptSheet({ open, onOpenChange, payment }: ReceiptSheetProps)
                     >
                         {/* Header */}
                         <div className="text-center mb-6 border-b pb-4">
-                            <h1 className="text-xl font-bold uppercase tracking-wide">Money Receipt</h1>
-                            <p className="text-gray-500 text-xs mt-1">Event Management System</p>
+                            {payment.event ? (
+                                <>
+                                    <h1 className="text-2xl font-bold uppercase tracking-wide text-center">{payment.event.name}</h1>
+                                    <p className="text-sm text-gray-600 mb-2">{payment.event.location}</p>
+                                    <div className="border-t pt-2 mt-2">
+                                        <h2 className="text-xl font-semibold uppercase tracking-wide">Money Receipt</h2>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <h1 className="text-xl font-bold uppercase tracking-wide">Money Receipt</h1>
+                                    <p className="text-gray-500 text-xs mt-1">Event Management System</p>
+                                </>
+                            )}
                         </div>
 
                         {/* Meta */}
@@ -60,19 +72,27 @@ export function ReceiptSheet({ open, onOpenChange, payment }: ReceiptSheetProps)
                             </div>
                             <div className="text-right">
                                 <p className="text-gray-500 text-xs">Date:</p>
-                                <p className="font-medium">{new Date(payment.date).toLocaleDateString()}</p>
+                                <p className="font-medium">{new Date(payment.date).toLocaleDateString('en-GB')}</p>
                             </div>
                         </div>
 
                         {/* Content */}
                         <div className="space-y-4 mb-8">
                             <div className="flex border-b border-dotted pb-2">
-                                <span className="w-32 text-gray-500">Received with thanks from:</span>
+                                <span className="w-32 text-gray-500">Received from:</span>
                                 <span className="font-medium flex-1 italic decoration-dotted">
-                                    Exhibitor ID: {payment.exhibitorId}
-                                    {/* (Name would be better passed in props) */}
+                                    {payment.exhibitor?.name || `ID: ${payment.exhibitorId}`}
+                                    {payment.exhibitor?.faciaName && ` (Facia: ${payment.exhibitor.faciaName})`}
                                 </span>
                             </div>
+                            {payment.exhibitor?.bookings?.[0]?.space && (
+                                <div className="flex border-b border-dotted pb-2">
+                                    <span className="w-32 text-gray-500">Space:</span>
+                                    <span className="font-medium flex-1">
+                                        {payment.exhibitor.bookings[0].space.label}
+                                    </span>
+                                </div>
+                            )}
                             <div className="flex border-b border-dotted pb-2">
                                 <span className="w-32 text-gray-500">The sum of Rupees:</span>
                                 <span className="font-medium flex-1 capitalize">

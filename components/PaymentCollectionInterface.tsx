@@ -131,12 +131,18 @@ export function PaymentCollectionInterface({ exhibitors, eventId }: PaymentColle
                 alert(`Some payments failed: ${failures.map(f => f.error).join(', ')}`);
             } else {
                 // Success logic
+                // Success logic
+                // Extract event/exhibitor from the first successful result
+                const firstResultData = results[0].data;
+
                 const paymentDataForReceipt = {
                     ...paymentsToSave[0],
                     receiptNumber: validSplits.length > 1 ? `${formData.receiptNumber}-ALL` : formData.receiptNumber,
                     amount: totalAmount,
                     paymentMethod: validSplits.length > 1 ? 'Split' : validSplits[0].method,
-                    id: Date.now()
+                    id: Date.now(),
+                    event: firstResultData?.event,
+                    exhibitor: firstResultData?.exhibitor
                 };
 
                 if (print) {
@@ -261,6 +267,7 @@ export function PaymentCollectionInterface({ exhibitors, eventId }: PaymentColle
                         <CardContent className="px-4 pb-4">
                             <div className={`text-xl font-bold ${details.costs.total - details.paid.total > 0 ? 'text-red-600' : 'text-green-600'}`}>
                                 ₹{(details.costs.total - details.paid.total).toLocaleString()}
+                                {/* Payment History */}
                             </div>
                             <div className="text-xs text-gray-400 mt-1">
                                 Total: ₹{details.costs.total.toLocaleString()}
@@ -411,10 +418,14 @@ export function PaymentCollectionInterface({ exhibitors, eventId }: PaymentColle
                         <PaymentHistoryList
                             payments={details.payments}
                             onRefresh={async () => {
-                                const updated = await fetchExhibitorDetails(selectedExhibitorId, eventId);
-                                setFetchedDetails(updated);
-                                router.refresh();
+                                if (selectedExhibitorId) {
+                                    const updated = await fetchExhibitorDetails(selectedExhibitorId, eventId);
+                                    setFetchedDetails(updated);
+                                    router.refresh();
+                                }
                             }}
+                            event={details.event}
+                            exhibitor={details}
                         />
                     </CardContent>
                 </Card>

@@ -19,7 +19,8 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { MapPin, IndianRupee, Trash2 } from 'lucide-react';
-import { allocateSpace, deleteAllocation } from '@/app/allocation-actions';
+import { allocateSpace, deleteAllocation, getExhibitorSummary } from '@/app/allocation-actions';
+import { ExhibitorDetailsDialog } from '@/components/ExhibitorDetailsDialog';
 
 interface SpaceAllocationGridProps {
     availableSpaces: any[];
@@ -31,6 +32,8 @@ interface SpaceAllocationGridProps {
 export function SpaceAllocationGrid({ availableSpaces, bookings, exhibitors, eventId }: SpaceAllocationGridProps) {
     const [selectedSpace, setSelectedSpace] = useState<any>(null);
     const [selectedExhibitor, setSelectedExhibitor] = useState<number>(0);
+    const [viewDetailsData, setViewDetailsData] = useState<any>(null);
+    const [detailLoading, setDetailLoading] = useState(false);
     const [deleteConfirmation, setDeleteConfirmation] = useState<number | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -61,6 +64,22 @@ export function SpaceAllocationGrid({ availableSpaces, bookings, exhibitors, eve
             console.error(err);
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function handleViewDetails(exhibitorId: number) {
+        setDetailLoading(true);
+        try {
+            const result = await getExhibitorSummary(exhibitorId, eventId);
+            if (result.success) {
+                setViewDetailsData(result.data);
+            } else {
+                console.error(result.error);
+            }
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setDetailLoading(false);
         }
     }
 
@@ -136,13 +155,17 @@ export function SpaceAllocationGrid({ availableSpaces, bookings, exhibitors, eve
                         {bookings.map((booking) => (
                             <div
                                 key={booking.id}
-                                className="bg-white border-2 border-blue-200 rounded-lg p-4 hover:border-blue-500 hover:shadow-md transition-all relative group"
+                                onClick={() => handleViewDetails(booking.exhibitorId)}
+                                className="bg-white border-2 border-blue-200 rounded-lg p-4 hover:border-blue-500 hover:shadow-md transition-all relative group cursor-pointer"
                             >
-                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => handleDelete(booking.id)}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDelete(booking.id);
+                                        }}
                                         className="h-8 w-8 p-0 text-red-600 hover:text-red-900 hover:bg-red-50"
                                         disabled={loading}
                                     >
@@ -274,6 +297,13 @@ export function SpaceAllocationGrid({ availableSpaces, bookings, exhibitors, eve
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Exhibitor Details Dialog */}
+            <ExhibitorDetailsDialog
+                isOpen={!!viewDetailsData}
+                onClose={() => setViewDetailsData(null)}
+                data={viewDetailsData}
+            />
         </div>
     );
 }

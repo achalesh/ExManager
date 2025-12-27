@@ -49,6 +49,13 @@ export async function getMaterials() {
     return await prisma.material.findMany({
         orderBy: {
             name: 'asc'
+        },
+        include: {
+            items: {
+                select: {
+                    status: true
+                }
+            }
         }
     });
 

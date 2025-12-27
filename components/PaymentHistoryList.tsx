@@ -15,8 +15,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { deletePayment, updatePayment } from "@/app/payment-actions";
-import { Edit2, Trash2, Loader2 } from "lucide-react";
+import { Edit2, Trash2, Loader2, Printer } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { ReceiptSheet } from './ReceiptSheet';
 
 interface Payment {
     id: number;
@@ -32,12 +33,18 @@ interface Payment {
 interface PaymentHistoryListProps {
     payments: Payment[];
     onRefresh: () => void;
+    event?: any;
+    exhibitor?: any;
 }
 
-export function PaymentHistoryList({ payments, onRefresh }: PaymentHistoryListProps) {
+export function PaymentHistoryList({ payments, onRefresh, event, exhibitor }: PaymentHistoryListProps) {
     const router = useRouter();
     const [loading, setLoading] = useState<number | null>(null);
     const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+
+    // Receipt State
+    const [showReceipt, setShowReceipt] = useState(false);
+    const [receiptData, setReceiptData] = useState<any>(null);
 
     // Edit Form State
     const [editForm, setEditForm] = useState({
@@ -89,6 +96,15 @@ export function PaymentHistoryList({ payments, onRefresh }: PaymentHistoryListPr
         }
     };
 
+    const handlePrint = (payment: Payment) => {
+        setReceiptData({
+            ...payment,
+            event,
+            exhibitor
+        });
+        setShowReceipt(true);
+    };
+
     if (!payments || payments.length === 0) {
         return <div className="text-center p-4 text-gray-500 text-sm">No payment history found.</div>;
     }
@@ -105,7 +121,7 @@ export function PaymentHistoryList({ payments, onRefresh }: PaymentHistoryListPr
                             <TableHead>Category</TableHead>
                             <TableHead>Method</TableHead>
                             <TableHead className="text-right">Amount</TableHead>
-                            <TableHead className="w-[100px]">Actions</TableHead>
+                            <TableHead className="w-[140px] text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -124,8 +140,18 @@ export function PaymentHistoryList({ payments, onRefresh }: PaymentHistoryListPr
                                             variant="ghost"
                                             size="sm"
                                             className="h-8 w-8 p-0"
+                                            onClick={() => handlePrint(p)}
+                                            title="Print Receipt"
+                                        >
+                                            <Printer className="h-4 w-4 text-gray-600" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-8 w-8 p-0"
                                             onClick={() => startEdit(p)}
                                             disabled={loading === p.id}
+                                            title="Edit"
                                         >
                                             <Edit2 className="h-4 w-4 text-blue-600" />
                                         </Button>
@@ -135,6 +161,7 @@ export function PaymentHistoryList({ payments, onRefresh }: PaymentHistoryListPr
                                             className="h-8 w-8 p-0"
                                             onClick={() => handleDelete(p.id)}
                                             disabled={loading === p.id}
+                                            title="Delete"
                                         >
                                             {loading === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 text-red-600" />}
                                         </Button>
@@ -207,6 +234,15 @@ export function PaymentHistoryList({ payments, onRefresh }: PaymentHistoryListPr
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Receipt Sheet */}
+            {showReceipt && receiptData && (
+                <ReceiptSheet
+                    open={showReceipt}
+                    onOpenChange={setShowReceipt}
+                    payment={receiptData}
+                />
+            )}
         </div>
     );
 }

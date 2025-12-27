@@ -129,6 +129,183 @@ export async function getBookings(eventId?: number) {
     });
 }
 
+// Batch Allocation
+const allocateBatchMaterialsSchema = z.object({
+    exhibitorId: z.number().min(1, "Exhibitor is required"),
+    eventId: z.number().min(1, "Event is required"),
+    items: z.array(z.object({
+        materialId: z.number().min(1, "Material is required"),
+        quantity: z.number().min(1, "Quantity must be at least 1"),
+        focQuantity: z.number().optional(),
+        suffixes: z.array(z.string()).optional(),
+    })).min(1, "At least one item is required"),
+});
+
+export async function allocateBatchMaterials(data: z.infer<typeof allocateBatchMaterialsSchema>) {
+    const session = await getSession();
+
+    if (!session) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const parsed = allocateBatchMaterialsSchema.parse(data);
+        const { exhibitorId, eventId, items } = parsed;
+
+        const createdIds: number[] = [];
+
+        await prisma.$transaction(async (tx) => {
+            for (const item of items) {
+                const { materialId, quantity, focQuantity = 0, suffixes } = item;
+
+                // Validate FOC
+                if (focQuantity > quantity) {
+                    throw new Error(`FOC Quantity cannot be greater than Total Quantity for material ID ${materialId}`);
+                }
+
+                // 1. Handle Tracked Items (if suffixes present)
+                if (suffixes && suffixes.length > 0) {
+                    // Check if suffixes match quantity
+                    // (Frontend ensures this, but double check?)
+                    // For tracked items, we ignore 'quantity' input usually and use suffixes.length, 
+                    // OR we enforce they match.
+                    // The simple way: Trust suffixes.
+
+                    const availableItems = await tx.materialItem.findMany({
+                        where: {
+                            materialId: materialId,
+                            status: 'Available'
+                        }
+                    });
+
+                    const matchedItemsIds: number[] = [];
+                    const notFound: string[] = [];
+
+                    for (const suffix of suffixes) {
+                        const match = availableItems.find(i => i.uniqueCode.endsWith(suffix));
+                        // Avoid double picking in same batch?
+                        if (match && !matchedItemsIds.includes(match.id)) {
+                            matchedItemsIds.push(match.id);
+                        } else {
+                            notFound.push(suffix);
+                        }
+                    }
+
+                    if (notFound.length > 0) {
+                        throw new Error(`Items not found for IDs: ${notFound.join(', ')}`);
+                    }
+
+                    // Split into Paid vs FOC based on counts
+                    const matchedItems = availableItems.filter(i => matchedItemsIds.includes(i.id));
+                    const focItems = matchedItems.slice(0, focQuantity);
+                    const paidItems = matchedItems.slice(focQuantity);
+
+                    // Allocate FOC
+                    if (focItems.length > 0) {
+                        const allocationFOC = await tx.materialAllocation.create({
+                            data: {
+                                exhibitorId,
+                                materialId,
+                                quantity: focItems.length,
+                                totalPrice: 0,
+                                eventId,
+                                isFOC: true,
+                            },
+                        });
+                        await tx.materialItem.updateMany({
+                            where: { id: { in: focItems.map(i => i.id) } },
+                            data: { status: 'Allocated', activeAllocationId: allocationFOC.id }
+                        });
+                        createdIds.push(allocationFOC.id);
+                    }
+
+                    // Allocate Paid
+                    if (paidItems.length > 0) {
+                        const material = await tx.material.findUnique({ where: { id: materialId } });
+                        if (!material) throw new Error("Material not found");
+
+                        const allocationPaid = await tx.materialAllocation.create({
+                            data: {
+                                exhibitorId,
+                                materialId,
+                                quantity: paidItems.length,
+                                totalPrice: material.price * paidItems.length,
+                                eventId,
+                                isFOC: false,
+                            }
+                        });
+                        await tx.materialItem.updateMany({
+                            where: { id: { in: paidItems.map(i => i.id) } },
+                            data: { status: 'Allocated', activeAllocationId: allocationPaid.id }
+                        });
+                        createdIds.push(allocationPaid.id);
+                    }
+
+                } else {
+                    // 2. Regular Allocation (Non-tracked)
+                    const material = await tx.material.findUnique({ where: { id: materialId } });
+                    if (!material) throw new Error(`Material ${materialId} not found`);
+
+                    const paidQty = quantity - focQuantity;
+
+                    if (paidQty > 0) {
+                        const alloc = await tx.materialAllocation.create({
+                            data: {
+                                exhibitorId,
+                                materialId,
+                                quantity: paidQty,
+                                totalPrice: material.price * paidQty,
+                                eventId,
+                                isFOC: false,
+                            }
+                        });
+                        createdIds.push(alloc.id);
+                    }
+
+                    if (focQuantity > 0) {
+                        const alloc = await tx.materialAllocation.create({
+                            data: {
+                                exhibitorId,
+                                materialId,
+                                quantity: focQuantity,
+                                totalPrice: 0,
+                                eventId,
+                                isFOC: true,
+                            }
+                        });
+                        createdIds.push(alloc.id);
+                    }
+                }
+            }
+        });
+
+        revalidatePath('/dashboard/allocate-material');
+
+        // Fetch full details of created allocations for receipt
+        const createdAllocations = await prisma.materialAllocation.findMany({
+            where: { id: { in: createdIds } },
+            include: {
+                material: true,
+                items: true,
+                exhibitor: {
+                    include: {
+                        bookings: {
+                            where: { eventId },
+                            include: { space: true }
+                        }
+                    }
+                },
+                event: true
+            }
+        });
+
+        return { success: true, data: createdAllocations };
+    } catch (error: any) {
+        console.error('Error allocating batch items:', error);
+        return { success: false, error: error.message || 'Failed to allocate batch items' };
+    }
+}
+
 // Material Allocation
 const allocateMaterialSchema = z.object({
     exhibitorId: z.number().min(1, "Exhibitor is required"),
@@ -164,10 +341,12 @@ export async function allocateMaterial(data: z.infer<typeof allocateMaterialSche
 
         const paidQuantity = quantity - focQuantity;
 
+        const createdIds: number[] = [];
+
         await prisma.$transaction(async (tx) => {
             // 1. Paid Allocation
             if (paidQuantity > 0) {
-                await tx.materialAllocation.create({
+                const allocPaid = await tx.materialAllocation.create({
                     data: {
                         exhibitorId: parsed.exhibitorId,
                         materialId: parsed.materialId,
@@ -177,11 +356,12 @@ export async function allocateMaterial(data: z.infer<typeof allocateMaterialSche
                         isFOC: false,
                     }
                 });
+                createdIds.push(allocPaid.id);
             }
 
             // 2. FOC Allocation
             if (focQuantity > 0) {
-                await tx.materialAllocation.create({
+                const allocFOC = await tx.materialAllocation.create({
                     data: {
                         exhibitorId: parsed.exhibitorId,
                         materialId: parsed.materialId,
@@ -191,11 +371,30 @@ export async function allocateMaterial(data: z.infer<typeof allocateMaterialSche
                         isFOC: true,
                     }
                 });
+                createdIds.push(allocFOC.id);
             }
         });
 
         revalidatePath('/dashboard/allocate-material');
-        return { success: true };
+
+        const createdAllocations = await prisma.materialAllocation.findMany({
+            where: { id: { in: createdIds } },
+            include: {
+                material: true,
+                items: true,
+                exhibitor: {
+                    include: {
+                        bookings: {
+                            where: { eventId: parsed.eventId },
+                            include: { space: true }
+                        }
+                    }
+                },
+                event: true
+            }
+        });
+
+        return { success: true, data: createdAllocations };
     } catch (error) {
         console.error('Error allocating material:', error);
         return { success: false, error: 'Failed to allocate material' };
@@ -590,7 +789,18 @@ export async function updateMaterialAllocation(data: z.infer<typeof updateMateri
         });
 
         revalidatePath('/dashboard/allocate-material');
-        return { success: true };
+
+        // Fetch updated allocation for receipt
+        const updatedAllocation = await prisma.materialAllocation.findUnique({
+            where: { id: allocationId },
+            include: {
+                material: true,
+                items: true,
+                exhibitor: true
+            }
+        });
+
+        return { success: true, data: [updatedAllocation] };
 
     } catch (error: any) {
         console.error('Error updating material allocation:', error);
@@ -617,8 +827,16 @@ export async function getMaterialAllocations(eventId?: number) {
         },
         include: {
             material: true,
-            exhibitor: true,
-            items: true
+            exhibitor: {
+                include: {
+                    bookings: {
+                        where: { eventId: activeEventId },
+                        include: { space: true }
+                    }
+                }
+            },
+            items: true,
+            event: true
         },
         orderBy: {
             createdAt: 'desc'
@@ -655,19 +873,36 @@ export async function allocateElectrical(data: z.infer<typeof allocateElectrical
         const totalPrice = item.price * parsed.quantity;
         const totalWattage = item.wattage * parsed.quantity;
 
-        await prisma.electricalAllocation.create({
+        const newAllocation = await prisma.electricalAllocation.create({
             data: {
                 exhibitorId: parsed.exhibitorId,
                 electricalItemId: parsed.electricalItemId,
                 quantity: parsed.quantity,
-                totalPrice,
-                totalWattage,
+                totalPrice: item.price * parsed.quantity,
+                totalWattage: item.wattage * parsed.quantity,
                 eventId: parsed.eventId,
             }
         });
 
         revalidatePath('/dashboard/allocate-electric');
-        return { success: true };
+
+        const createdAllocation = await prisma.electricalAllocation.findFirst({
+            where: { id: newAllocation.id },
+            include: {
+                electricalItem: true,
+                exhibitor: {
+                    include: {
+                        bookings: {
+                            where: { eventId: parsed.eventId },
+                            include: { space: true }
+                        }
+                    }
+                },
+                event: true
+            }
+        });
+
+        return { success: true, data: [createdAllocation] };
     } catch (error) {
         console.error('Error allocating electrical:', error);
         return { success: false, error: 'Failed to allocate electrical item' };
@@ -693,7 +928,15 @@ export async function getElectricalAllocations(eventId?: number) {
         },
         include: {
             electricalItem: true,
-            exhibitor: true
+            exhibitor: {
+                include: {
+                    bookings: {
+                        where: { eventId: activeEventId },
+                        include: { space: true }
+                    }
+                }
+            },
+            event: true
         },
         orderBy: {
             createdAt: 'desc'
@@ -738,7 +981,7 @@ export async function allocateShed(data: z.infer<typeof allocateShedSchema>) {
             return { success: false, error: 'Shed not found' };
         }
 
-        await prisma.shedAllocation.create({
+        const newAllocation = await prisma.shedAllocation.create({
             data: {
                 exhibitorId: parsed.exhibitorId,
                 shedId: parsed.shedId,
@@ -748,7 +991,24 @@ export async function allocateShed(data: z.infer<typeof allocateShedSchema>) {
         });
 
         revalidatePath('/dashboard/allocate-shed');
-        return { success: true };
+
+        const createdAllocation = await prisma.shedAllocation.findFirst({
+            where: { id: newAllocation.id },
+            include: {
+                shed: true,
+                exhibitor: {
+                    include: {
+                        bookings: {
+                            where: { eventId: parsed.eventId },
+                            include: { space: true }
+                        }
+                    }
+                },
+                event: true
+            }
+        });
+
+        return { success: true, data: [createdAllocation] };
     } catch (error) {
         console.error('Error allocating shed:', error);
         return { success: false, error: 'Failed to allocate shed' };
@@ -774,7 +1034,15 @@ export async function getShedAllocations(eventId?: number) {
         },
         include: {
             shed: true,
-            exhibitor: true
+            exhibitor: {
+                include: {
+                    bookings: {
+                        where: { eventId: activeEventId },
+                        include: { space: true }
+                    }
+                }
+            },
+            event: true
         },
         orderBy: {
             createdAt: 'desc'
@@ -795,4 +1063,221 @@ export async function getExhibitors() {
             name: 'asc'
         }
     });
+}
+// Get single exhibitor summary
+export async function getExhibitorSummary(exhibitorId: number, eventId: number) {
+    const session = await getSession();
+
+    if (!session) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const [
+            exhibitor,
+            bookings,
+            materialAllocations,
+            electricalAllocations,
+            shedAllocations,
+            payments
+        ] = await Promise.all([
+            prisma.exhibitor.findUnique({ where: { id: exhibitorId } }),
+            prisma.booking.findMany({
+                where: { exhibitorId, eventId },
+                include: { space: { include: { category: true } } }
+            }),
+            prisma.materialAllocation.findMany({
+                where: { exhibitorId, eventId },
+                include: { material: true, items: true }
+            }),
+            prisma.electricalAllocation.findMany({
+                where: { exhibitorId, eventId },
+                include: { electricalItem: true }
+            }),
+            prisma.shedAllocation.findMany({
+                where: { exhibitorId, eventId },
+                include: { shed: true }
+            }),
+            prisma.payment.findMany({
+                where: { exhibitorId }, // Note: Payment doesn't have eventId in schema, fetching all for exhibitor
+                orderBy: { createdAt: 'desc' }
+            })
+        ]);
+
+        if (!exhibitor) {
+            return { success: false, error: 'Exhibitor not found' };
+        }
+
+        // Calculate Totals
+        const spaceTotal = bookings.reduce((sum, b) => sum + b.totalAmount, 0);
+        const materialTotal = materialAllocations.reduce((sum, a) => sum + a.totalPrice, 0);
+        const electricalTotal = electricalAllocations.reduce((sum, a) => sum + a.totalPrice, 0);
+        const shedTotal = shedAllocations.reduce((sum, a) => sum + (a.price || 0), 0);
+        const grandTotal = spaceTotal + materialTotal + electricalTotal + shedTotal;
+        const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+        const balance = grandTotal - totalPaid;
+
+        return {
+            success: true,
+            data: {
+                exhibitor,
+                bookings,
+                materialAllocations,
+                electricalAllocations,
+                shedAllocations,
+                payments,
+                summary: {
+                    spaceTotal,
+                    materialTotal,
+                    electricalTotal,
+                    shedTotal,
+                    grandTotal,
+                    totalPaid,
+                    balance
+                }
+            }
+        };
+
+    } catch (error) {
+        console.error('Error fetching exhibitor summary:', error);
+        return { success: false, error: 'Failed to fetch exhibitor summary' };
+    }
+}
+// Batch Electrical Allocation
+const allocateBatchElectricalSchema = z.object({
+    exhibitorId: z.number().min(1, "Exhibitor is required"),
+    eventId: z.number().min(1, "Event is required"),
+    items: z.array(z.object({
+        electricalItemId: z.number().min(1, "Electrical Item is required"),
+        quantity: z.number().min(1, "Quantity must be at least 1"),
+    })).min(1, "At least one item is required"),
+});
+
+export async function allocateBatchElectrical(data: z.infer<typeof allocateBatchElectricalSchema>) {
+    const session = await getSession();
+
+    if (!session) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const parsed = allocateBatchElectricalSchema.parse(data);
+        const { exhibitorId, eventId, items } = parsed;
+
+        const createdIds: number[] = [];
+
+        await prisma.$transaction(async (tx) => {
+            for (const item of items) {
+                const electricalItem = await tx.electricalItem.findUnique({
+                    where: { id: item.electricalItemId }
+                });
+
+                if (!electricalItem) {
+                    throw new Error(`Electrical Item ${item.electricalItemId} not found`);
+                }
+
+                const totalPrice = electricalItem.price * item.quantity;
+                const totalWattage = electricalItem.wattage * item.quantity;
+
+                const allocation = await tx.electricalAllocation.create({
+                    data: {
+                        exhibitorId,
+                        electricalItemId: item.electricalItemId,
+                        quantity: item.quantity,
+                        totalPrice,
+                        totalWattage,
+                        eventId
+                    }
+                });
+                createdIds.push(allocation.id);
+            }
+        });
+
+        revalidatePath('/dashboard/allocate-electrical');
+
+        const createdAllocations = await prisma.electricalAllocation.findMany({
+            where: { id: { in: createdIds } },
+            include: {
+                electricalItem: true,
+                exhibitor: true,
+                event: true
+            }
+        });
+
+        return { success: true, data: createdAllocations };
+
+    } catch (error: any) {
+        console.error('Error allocating batch electrical items:', error);
+        return { success: false, error: error.message || 'Failed to allocate items' };
+    }
+}
+
+export async function deleteElectricalAllocation(allocationId: number) {
+    const session = await getSession();
+
+    if (!session) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        await prisma.electricalAllocation.delete({
+            where: { id: allocationId }
+        });
+
+        revalidatePath('/dashboard/allocate-electrical');
+        return { success: true };
+    } catch (error) {
+        console.error('Error deleting electrical allocation:', error);
+        return { success: false, error: 'Failed to delete allocation' };
+    }
+}
+
+const updateElectricalAllocationSchema = z.object({
+    allocationId: z.number().min(1, "Allocation ID is required"),
+    exhibitorId: z.number().min(1, "Exhibitor is required"),
+    electricalItemId: z.number().min(1, "Electrical Item is required"),
+    quantity: z.number().min(1, "Quantity must be at least 1"),
+    eventId: z.number().min(1, "Event is required"),
+});
+
+export async function updateElectricalAllocation(data: z.infer<typeof updateElectricalAllocationSchema>) {
+    const session = await getSession();
+
+    if (!session) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const parsed = updateElectricalAllocationSchema.parse(data);
+        const { allocationId, electricalItemId, quantity } = parsed;
+
+        const electricalItem = await prisma.electricalItem.findUnique({
+            where: { id: electricalItemId }
+        });
+
+        if (!electricalItem) {
+            return { success: false, error: 'Electrical item not found' };
+        }
+
+        const totalPrice = electricalItem.price * quantity;
+        const totalWattage = electricalItem.wattage * quantity;
+
+        await prisma.electricalAllocation.update({
+            where: { id: allocationId },
+            data: {
+                exhibitorId: parsed.exhibitorId,
+                electricalItemId: parsed.electricalItemId,
+                quantity: parsed.quantity,
+                totalPrice,
+                totalWattage,
+                eventId: parsed.eventId
+            }
+        });
+
+        revalidatePath('/dashboard/allocate-electrical');
+        return { success: true };
+    } catch (error: any) {
+        console.error('Error updating electrical allocation:', error);
+        return { success: false, error: error.message || 'Failed to update allocation' };
+    }
 }

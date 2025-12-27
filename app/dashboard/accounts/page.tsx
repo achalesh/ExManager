@@ -76,10 +76,10 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                 </Card>
             </div>
 
-            {/* Transactions Table */}
+            {/* Transactions Table for Selected Date */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Transactions</CardTitle>
+                    <CardTitle>Transactions ({new Date(date).toLocaleDateString()})</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="overflow-x-auto">
@@ -142,6 +142,79 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Recent Activity Section */}
+            <RecentActivitySection />
         </div>
+    );
+}
+
+import { getRecentTransactions } from '@/app/accounts-actions';
+
+async function RecentActivitySection() {
+    const recentTransactions = await getRecentTransactions(10);
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Recent Activity (Last 10)</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {recentTransactions.length > 0 ? (
+                                recentTransactions.map((tx: any) => (
+                                    <tr key={tx.id} className="hover:bg-gray-50">
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {new Date(tx.transactionDate).toLocaleString()}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${tx.type === 'Income' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                                }`}>
+                                                {tx.type}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                            {tx.category}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
+                                            {tx.description || '-'}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {tx.paymentMethod}
+                                        </td>
+                                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold text-right ${tx.type === 'Income' ? 'text-green-600' : 'text-red-600'
+                                            }`}>
+                                            ₹{tx.amount.toFixed(2)}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+                                            {tx.recordedBy || '-'}
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan={7} className="px-6 py-10 text-center text-gray-500">
+                                        No recent transactions.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </CardContent>
+        </Card>
     );
 }

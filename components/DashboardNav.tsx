@@ -83,6 +83,9 @@ export function DashboardNav({ session }: DashboardNavProps) {
 
     const reportItems = [
         { href: '/dashboard/reports', label: 'General Reports', icon: BarChart3 },
+        { href: '/dashboard/reports/electrical', label: 'Electrical Reports', icon: Zap },
+        { href: '/dashboard/reports/materials', label: 'Material Reports', icon: Package },
+        { href: '/dashboard/reports/sheds', label: 'Shed Reports', icon: HomeIcon },
     ];
 
     const settingsItems = [
@@ -127,8 +130,12 @@ export function DashboardNav({ session }: DashboardNavProps) {
                         {/* Allocations Dropdown */}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className={`flex items-center gap-1 ${allocationItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''
-                                    }`}>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className={`flex items-center gap-1 ${allocationItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''}`}
+                                    suppressHydrationWarning
+                                >
                                     <LayoutGrid className="h-4 w-4" />
                                     <span>Allocations</span>
                                     <ChevronDown className="h-3 w-3" />
@@ -149,8 +156,12 @@ export function DashboardNav({ session }: DashboardNavProps) {
                         {/* Operations Dropdown */}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className={`flex items-center gap-1 ${operationsItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''
-                                    }`}>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className={`flex items-center gap-1 ${operationsItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''}`}
+                                    suppressHydrationWarning
+                                >
                                     <Briefcase className="h-4 w-4" />
                                     <span>Operations</span>
                                     <ChevronDown className="h-3 w-3" />
@@ -171,8 +182,12 @@ export function DashboardNav({ session }: DashboardNavProps) {
                         {/* Ticketing Dropdown */}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className={`flex items-center gap-1 ${ticketingItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''
-                                    }`}>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className={`flex items-center gap-1 ${ticketingItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''}`}
+                                    suppressHydrationWarning
+                                >
                                     <Ticket className="h-4 w-4" />
                                     <span>Ticketing</span>
                                     <ChevronDown className="h-3 w-3" />
@@ -200,8 +215,12 @@ export function DashboardNav({ session }: DashboardNavProps) {
                         {/* Reports Dropdown */}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className={`flex items-center gap-1 ${reportItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''
-                                    }`}>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className={`flex items-center gap-1 ${reportItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''}`}
+                                    suppressHydrationWarning
+                                >
                                     <BarChart3 className="h-4 w-4" />
                                     <span>Reports</span>
                                     <ChevronDown className="h-3 w-3" />
@@ -222,7 +241,7 @@ export function DashboardNav({ session }: DashboardNavProps) {
                         {isManager && (
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="flex items-center gap-1">
+                                    <Button variant="ghost" size="sm" className="flex items-center gap-1" suppressHydrationWarning>
                                         <Settings className="h-4 w-4" />
                                         <span>Settings</span>
                                         <ChevronDown className="h-3 w-3" />
@@ -242,7 +261,7 @@ export function DashboardNav({ session }: DashboardNavProps) {
                         {isAdmin && (
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" className="flex items-center gap-1">
+                                    <Button variant="ghost" size="sm" className="flex items-center gap-1" suppressHydrationWarning>
                                         <Shield className="h-4 w-4" />
                                         <span>Admin</span>
                                         <ChevronDown className="h-3 w-3" />

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,8 +20,9 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
-import { Plus, Zap, IndianRupee } from 'lucide-react';
-import { allocateElectrical } from '@/app/allocation-actions';
+import { Plus, Zap, IndianRupee, Printer, Trash2, Pencil } from 'lucide-react';
+import { ElectricalReceipt } from './ElectricalReceipt';
+import { allocateElectrical, allocateBatchElectrical, deleteElectricalAllocation, updateElectricalAllocation } from '@/app/allocation-actions';
 
 interface ElectricalAllocationInterfaceProps {
     items: any[];
@@ -41,28 +42,124 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
         electricalItemId: 0,
         quantity: 1,
     });
+    const [pendingItems, setPendingItems] = useState<{ electricalItemId: number, quantity: number }[]>([]);
 
-    async function handleSubmit(e: React.FormEvent) {
-        e.preventDefault();
+    const [editMode, setEditMode] = useState(false);
+    const [editAllocationId, setEditAllocationId] = useState<number | null>(null);
+
+    const [showReceipt, setShowReceipt] = useState(false);
+    const [receiptData, setReceiptData] = useState<any[]>([]);
+
+    // Reset edit mode when dialog closes
+    useEffect(() => {
+        if (!open) {
+            setEditMode(false);
+            setEditAllocationId(null);
+            setFormData({
+                exhibitorId: 0,
+                electricalItemId: 0,
+                quantity: 1,
+            });
+            setPendingItems([]);
+            setError('');
+        }
+    }, [open]);
+
+    const handleEdit = (allocation: any) => {
+        setFormData({
+            exhibitorId: allocation.exhibitorId,
+            electricalItemId: allocation.electricalItemId,
+            quantity: allocation.quantity,
+        });
+        setEditAllocationId(allocation.id);
+        setEditMode(true);
+        setOpen(true);
+    };
+
+    const handleAddItem = () => {
+        if (formData.electricalItemId > 0 && formData.quantity > 0) {
+            setPendingItems([...pendingItems, {
+                electricalItemId: formData.electricalItemId,
+                quantity: formData.quantity
+            }]);
+            // Reset item selection but keep exhibitor
+            setFormData({ ...formData, electricalItemId: 0, quantity: 1 });
+        }
+    };
+
+    const handleRemoveItem = (index: number) => {
+        const newItems = [...pendingItems];
+        newItems.splice(index, 1);
+        setPendingItems(newItems);
+    };
+
+    async function handleSubmit() {
         setError('');
         setLoading(true);
 
         try {
-            const result = await allocateElectrical({
-                ...formData,
-                eventId
-            });
-
-            if (result.success) {
-                setOpen(false);
-                setFormData({
-                    exhibitorId: 0,
-                    electricalItemId: 0,
-                    quantity: 1,
+            if (editMode && editAllocationId) {
+                // Edit existing allocation
+                const result = await updateElectricalAllocation({
+                    allocationId: editAllocationId,
+                    exhibitorId: formData.exhibitorId,
+                    electricalItemId: formData.electricalItemId,
+                    quantity: formData.quantity,
+                    eventId
                 });
-                router.refresh();
+
+                if (result.success) {
+                    setOpen(false);
+                    router.refresh();
+                } else {
+                    setError(result.error || 'Failed to update allocation');
+                }
             } else {
-                setError(result.error || 'Failed to allocate electrical item');
+                // Batch Allocation
+                if (pendingItems.length === 0) {
+                    // Start: Allow single item direct allocation if list is empty (for better UX)
+                    if (formData.electricalItemId > 0) {
+                        const result = await allocateBatchElectrical({
+                            exhibitorId: formData.exhibitorId,
+                            eventId,
+                            items: [{ electricalItemId: formData.electricalItemId, quantity: formData.quantity }]
+                        });
+                        if (result.success) {
+                            setOpen(false);
+                            if (result.data) {
+                                setReceiptData(result.data);
+                                setShowReceipt(true);
+                            }
+                            router.refresh();
+                            return;
+                        } else {
+                            setError(result.error || 'Failed');
+                            setLoading(false);
+                            return;
+                        }
+                    }
+                    // End
+                    setError("Please add items to allocate");
+                    setLoading(false);
+                    return;
+                }
+
+                const result = await allocateBatchElectrical({
+                    exhibitorId: formData.exhibitorId,
+                    eventId,
+                    items: pendingItems
+                });
+
+                if (result.success) {
+                    setOpen(false);
+                    if (result.data) {
+                        setReceiptData(result.data);
+                        setShowReceipt(true);
+                    }
+                    router.refresh();
+                } else {
+                    setError(result.error || 'Failed to allocate electrical items');
+                }
             }
         } catch (err) {
             setError('An error occurred');
@@ -85,19 +182,19 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                     </DialogTrigger>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Allocate Electrical Item</DialogTitle>
+                            <DialogTitle>{editMode ? 'Edit Allocation' : 'Allocate Electrical Items'}</DialogTitle>
                             <DialogDescription>
-                                Assign electrical items to an exhibitor
+                                {editMode ? 'Update existing allocation' : 'Assign electrical items to an exhibitor'}
                             </DialogDescription>
                         </DialogHeader>
-                        <form onSubmit={handleSubmit}>
-                            <div className="grid gap-4 py-4">
+                        <div className="space-y-4">
+                            <div className="bg-gray-50 p-4 rounded-md border space-y-4">
                                 <div>
                                     <label className="block text-sm font-medium mb-2">Exhibitor *</label>
                                     <Select
                                         value={formData.exhibitorId.toString()}
                                         onValueChange={(value) => setFormData({ ...formData, exhibitorId: parseInt(value) })}
-                                        disabled={loading}
+                                        disabled={loading || pendingItems.length > 0}
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select exhibitor" />
@@ -105,60 +202,103 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                                         <SelectContent>
                                             {exhibitors.map((ex) => (
                                                 <SelectItem key={ex.id} value={ex.id.toString()}>
-                                                    {ex.name}
+                                                    {ex.name} {ex.faciaName ? `(${ex.faciaName})` : ''}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
                                 </div>
 
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Electrical Item *</label>
-                                    <Select
-                                        value={formData.electricalItemId.toString()}
-                                        onValueChange={(value) => setFormData({ ...formData, electricalItemId: parseInt(value) })}
-                                        disabled={loading}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select item" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {items.map((item) => (
-                                                <SelectItem key={item.id} value={item.id.toString()}>
-                                                    {item.name} - ₹{item.price} ({item.wattage}W)
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium mb-2">Quantity *</label>
-                                    <Input
-                                        type="number"
-                                        min={1}
-                                        value={formData.quantity}
-                                        onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
-                                        disabled={loading}
-                                    />
-                                </div>
-
-                                {error && (
-                                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
-                                        {error}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium mb-2">Electrical Item</label>
+                                        <Select
+                                            value={formData.electricalItemId.toString()}
+                                            onValueChange={(value) => setFormData({ ...formData, electricalItemId: parseInt(value) })}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select item" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {items.map((item) => (
+                                                    <SelectItem key={item.id} value={item.id.toString()}>
+                                                        {item.name} - ₹{item.price} ({item.wattage}W)
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium mb-2">Quantity</label>
+                                        <Input
+                                            type="number"
+                                            min={1}
+                                            value={formData.quantity}
+                                            onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                                        />
+                                    </div>
+                                </div>
+                                {!editMode && (
+                                    <Button
+                                        type="button"
+                                        onClick={handleAddItem}
+                                        disabled={formData.electricalItemId === 0}
+                                        className="w-full"
+                                        variant="secondary"
+                                    >
+                                        Add to List
+                                    </Button>
                                 )}
                             </div>
 
-                            <DialogFooter>
-                                <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>
-                                    Cancel
-                                </Button>
-                                <Button type="submit" disabled={loading || formData.exhibitorId === 0 || formData.electricalItemId === 0}>
-                                    {loading ? 'Allocating...' : 'Allocate'}
-                                </Button>
-                            </DialogFooter>
-                        </form>
+                            {/* Pending Items List - Only show in Create Mode */}
+                            {!editMode && pendingItems.length > 0 && (
+                                <div className="border rounded-md overflow-hidden">
+                                    <div className="bg-gray-100 px-4 py-2 font-medium text-sm flex justify-between items-center">
+                                        <span>Items to Allocate</span>
+                                        <span className="text-xs text-gray-500">{pendingItems.length} items</span>
+                                    </div>
+                                    <div className="max-h-40 overflow-y-auto divide-y">
+                                        {pendingItems.map((item, index) => {
+                                            const originalItem = items.find(i => i.id === item.electricalItemId);
+                                            return (
+                                                <div key={index} className="px-4 py-2 flex justify-between items-center text-sm">
+                                                    <div>
+                                                        <span className="font-medium">{originalItem?.name}</span>
+                                                        <span className="text-gray-500 ml-2">x {item.quantity}</span>
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-red-500 h-6 w-6 p-0 hover:bg-red-50"
+                                                        onClick={() => handleRemoveItem(index)}
+                                                    >
+                                                        &times;
+                                                    </Button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {error && (
+                                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+                                    {error}
+                                </div>
+                            )}
+                        </div>
+
+                        <DialogFooter className="mt-4">
+                            <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>
+                                Cancel
+                            </Button>
+                            <Button type="button" onClick={handleSubmit} disabled={loading || (pendingItems.length === 0 && !editMode && formData.electricalItemId === 0) || formData.exhibitorId === 0}>
+                                {loading ? 'Processing...' : (editMode ? 'Update Allocation' : `Allocate All`)}
+                            </Button>
+                        </DialogFooter>
                     </DialogContent>
                 </Dialog>
             </div>
@@ -176,55 +316,119 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-1/4">
                                     Exhibitor
                                 </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Item
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-1/2">
+                                    Allocated Items
                                 </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Quantity
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Total Wattage
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                                     Total Price
                                 </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Date
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                                    Actions
                                 </th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {allocations.map((allocation) => (
-                                <tr key={allocation.id} className="hover:bg-gray-50">
-                                    <td className="px-6 py-4 whitespace-nowrap">
+                            {Object.values(allocations.reduce((acc: any, curr: any) => {
+                                const exhId = curr.exhibitorId;
+                                if (!acc[exhId]) {
+                                    acc[exhId] = {
+                                        exhibitor: curr.exhibitor,
+                                        items: [],
+                                        totalPrice: 0,
+                                        latestDate: curr.createdAt
+                                    };
+                                }
+                                acc[exhId].items.push(curr);
+                                acc[exhId].totalPrice += curr.totalPrice;
+                                if (new Date(curr.createdAt) > new Date(acc[exhId].latestDate)) {
+                                    acc[exhId].latestDate = curr.createdAt;
+                                }
+                                return acc;
+                            }, {})).map((group: any) => (
+                                <tr key={group.exhibitor.id} className="hover:bg-gray-50 align-top">
+                                    <td className="px-6 py-4">
                                         <div className="text-sm font-medium text-gray-900">
-                                            {allocation.exhibitor.name}
+                                            {group.exhibitor.name}
+                                        </div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            Last Updated: {new Date(group.latestDate).toLocaleDateString('en-GB')}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="text-sm text-gray-900">{allocation.electricalItem.name}</div>
-                                        <div className="text-sm text-gray-500">{allocation.electricalItem.wattage}W each</div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        {allocation.quantity}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="flex items-center text-orange-600 font-semibold">
-                                            <Zap className="h-4 w-4 mr-1" />
-                                            {allocation.totalWattage}W
+                                    <td className="px-6 py-4">
+                                        <div className="space-y-3">
+                                            {group.items.map((allocation: any) => (
+                                                <div key={allocation.id} className="group flex items-start justify-between text-sm border-b border-gray-100 pb-2 last:border-0 last:pb-0">
+                                                    <div>
+                                                        <div className="font-medium text-gray-900">
+                                                            {allocation.electricalItem.name}
+                                                            <span className="ml-2 text-gray-500 font-normal">
+                                                                (Qty: {allocation.quantity})
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-xs text-gray-500">
+                                                            {allocation.electricalItem.wattage}W each
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 pl-4">
+                                                        <div className="text-orange-600 font-semibold text-xs flex items-center">
+                                                            <Zap className="h-3 w-3 mr-0.5" />
+                                                            {allocation.totalWattage}W
+                                                        </div>
+                                                        <span className="text-gray-600 font-medium whitespace-nowrap ml-2">
+                                                            ₹{allocation.totalPrice.toFixed(2)}
+                                                        </span>
+                                                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600 ml-2"
+                                                                onClick={() => handleEdit(allocation)}
+                                                                title="Edit Item"
+                                                            >
+                                                                <Pencil className="h-3 w-3" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 w-6 p-0 text-gray-400 hover:text-red-600 ml-1"
+                                                                onClick={async () => {
+                                                                    if (confirm(`Delete ${allocation.quantity} x ${allocation.electricalItem.name}?`)) {
+                                                                        const res = await deleteElectricalAllocation(allocation.id);
+                                                                        if (!res.success) alert(res.error);
+                                                                    }
+                                                                }}
+                                                                title="Delete Item"
+                                                            >
+                                                                <Trash2 className="h-3 w-3" />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="flex items-center text-gray-900">
-                                            <IndianRupee className="h-4 w-4 mr-1" />
-                                            {allocation.totalPrice.toFixed(2)}
+                                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                                        <div className="text-base font-bold text-gray-900">
+                                            <IndianRupee className="h-4 w-4 inline mr-0.5" />
+                                            {group.totalPrice.toFixed(2)}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {new Date(allocation.createdAt).toLocaleDateString()}
+                                    <td className="px-6 py-4 text-right whitespace-nowrap">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                setReceiptData(group.items);
+                                                setShowReceipt(true);
+                                            }}
+                                            className="text-xs"
+                                        >
+                                            <Printer className="h-3 w-3 mr-1" />
+                                            Print Receipt
+                                        </Button>
                                     </td>
                                 </tr>
                             ))}
@@ -232,6 +436,12 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                     </table>
                 </div>
             )}
+
+            <ElectricalReceipt
+                open={showReceipt}
+                onOpenChange={setShowReceipt}
+                allocations={receiptData}
+            />
         </div>
     );
 }

@@ -37,7 +37,7 @@ export async function recordPayment(data: z.infer<typeof recordPaymentSchema>) {
             return { success: false, error: `Receipt Number ${parsed.receiptNumber} already exists.` };
         }
 
-        await prisma.payment.create({
+        const payment = await prisma.payment.create({
             data: {
                 exhibitorId: parsed.exhibitorId,
                 amount: parsed.amount,
@@ -51,8 +51,20 @@ export async function recordPayment(data: z.infer<typeof recordPaymentSchema>) {
             } as any
         });
 
+        // Fetch details for receipt
+        const event = await prisma.event.findUnique({ where: { id: parsed.eventId } });
+        const exhibitor = await prisma.exhibitor.findUnique({
+            where: { id: parsed.exhibitorId },
+            include: {
+                bookings: {
+                    where: { eventId: parsed.eventId },
+                    include: { space: true }
+                }
+            }
+        });
+
         revalidatePath(`/dashboard/billing/${parsed.exhibitorId}`);
-        return { success: true };
+        return { success: true, data: { ...payment, event, exhibitor } };
     } catch (error) {
         console.error('Error recording payment:', error);
         return { success: false, error: 'Failed to record payment' };

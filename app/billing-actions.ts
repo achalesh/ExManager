@@ -99,8 +99,11 @@ export async function getExhibitorBillingDetails(exhibitorId: number, eventId: n
     // Total Paid is sum of all
     const totalPaid = spacePaid + materialPaid + electricalPaid + shedPaid + generalPaid;
 
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+
     return {
         ...exhibitor,
+        event,
         costs: {
             space: spaceCost,
             material: materialCost,

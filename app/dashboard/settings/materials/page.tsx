@@ -76,6 +76,25 @@ export default async function CreateMaterialsPage() {
                                 </p>
                             )}
 
+                            <div className="grid grid-cols-3 gap-2 mb-4 text-center">
+                                <div className="bg-gray-50 p-2 rounded">
+                                    <p className="text-xs text-gray-500 uppercase">Total</p>
+                                    <p className="font-bold text-gray-900">{material.items.length}</p>
+                                </div>
+                                <div className="bg-green-50 p-2 rounded">
+                                    <p className="text-xs text-green-600 uppercase">Avail</p>
+                                    <p className="font-bold text-green-700">
+                                        {material.items.filter((i: any) => i.status === 'Available').length}
+                                    </p>
+                                </div>
+                                <div className="bg-blue-50 p-2 rounded">
+                                    <p className="text-xs text-blue-600 uppercase">Alloc</p>
+                                    <p className="font-bold text-blue-700">
+                                        {material.items.filter((i: any) => i.status === 'Allocated').length}
+                                    </p>
+                                </div>
+                            </div>
+
                             <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                                 <div className="flex items-center text-gray-900">
                                     <IndianRupee className="h-4 w-4 mr-1" />

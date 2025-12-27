@@ -47,6 +47,12 @@ export default async function ReportsPage() {
                             Space Report
                         </Button>
                     </Link>
+                    <Link href="/dashboard/reports/materials">
+                        <Button variant="outline" className="gap-2 hidden md:flex">
+                            <Package className="h-4 w-4" />
+                            Material Report
+                        </Button>
+                    </Link>
                     <ReportControls
                         eventName={event.name}
                         exhibitorReport={exhibitorReport}
