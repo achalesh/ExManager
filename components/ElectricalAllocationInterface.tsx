@@ -42,8 +42,9 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
         exhibitorId: 0,
         electricalItemId: 0,
         quantity: 1,
+        billNumber: '',
     });
-    const [pendingItems, setPendingItems] = useState<{ electricalItemId: number, quantity: number }[]>([]);
+    const [pendingItems, setPendingItems] = useState<{ electricalItemId: number, quantity: number, billNumber?: string }[]>([]);
 
     const [editMode, setEditMode] = useState(false);
     const [editAllocationId, setEditAllocationId] = useState<number | null>(null);
@@ -95,6 +96,7 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
             exhibitorId: allocation.exhibitorId,
             electricalItemId: allocation.electricalItemId,
             quantity: allocation.quantity,
+            billNumber: allocation.billNumber || '',
         });
         setEditAllocationId(allocation.id);
         setEditMode(true);
