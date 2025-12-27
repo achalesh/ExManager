@@ -218,8 +218,6 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
             materialId: 0,
             quantity: 1,
             focQuantity: 0,
-            quantity: 1,
-            focQuantity: 0,
             isFOC: false,
             billNumber: ''
         }));
