@@ -308,6 +308,7 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                     quantity: 1,
                     focQuantity: 0,
                     isFOC: false,
+                    billNumber: '',
                 });
                 // Open Receipt if data returned
                 if (result.data) {
