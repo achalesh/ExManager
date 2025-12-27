@@ -1,4 +1,10 @@
 
+'use server';
+
+import { prisma } from '@/lib/prisma';
+import { getSession } from '@/lib/auth';
+import { revalidatePath } from 'next/cache';
+
 // Delete all material allocations for an exhibitor
 export async function deleteExhibitorMaterialAllocations(exhibitorId: number, eventId: number) {
     const session = await getSession();
