@@ -31,12 +31,15 @@ export function MaterialReceipt({ open, onOpenChange, allocations }: MaterialRec
     const handleWhatsAppShare = () => {
         if (!exhibitor) return;
 
-        let message = `*ExManager Receipt* \n`;
-        message += `Event: ${event?.name || 'N/A'}\n`;
+        let message = `Event: ${event?.name || 'N/A'}\n`;
+        message += `${event?.location || ''}\n`;
+        message += `*Receipt of*\n`;
         message += `Date: ${date}\n\n`;
+
         message += `*Exhibitor:* ${exhibitor.name}\n`;
         if (exhibitor.faciaName) message += `Facia: ${exhibitor.faciaName}\n`;
         message += `Space: ${spaceName}\n\n`;
+
         message += `*Allocated Items:*\n`;
 
         allocations.forEach(alloc => {
@@ -46,7 +49,8 @@ export function MaterialReceipt({ open, onOpenChange, allocations }: MaterialRec
             message += `\n`;
         });
 
-        message += `\n*Total: ₹${grandTotal.toFixed(2)}*`;
+        message += `*Total: ₹${grandTotal.toFixed(2)}*\n\n`;
+        message += `Please contact office for any changes`;
 
         const encodedMessage = encodeURIComponent(message);
 
