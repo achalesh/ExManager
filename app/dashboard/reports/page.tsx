@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getEventReport, getExhibitorReport, getAllocationSummary } from '@/app/report-actions';
 import { ReportControls } from '@/components/ReportControls';
-import { Calendar, Users, MapPin, IndianRupee, Package, Zap, Home, TrendingUp, Download, List } from 'lucide-react';
+import { Calendar, Users, MapPin, IndianRupee, Package, Zap, Home, TrendingUp, Download, List, Printer } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
@@ -41,18 +41,6 @@ export default async function ReportsPage() {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Link href="/dashboard/reports/allocations">
-                        <Button variant="outline" className="gap-2 hidden md:flex">
-                            <List className="h-4 w-4" />
-                            Space Report
-                        </Button>
-                    </Link>
-                    <Link href="/dashboard/reports/materials">
-                        <Button variant="outline" className="gap-2 hidden md:flex">
-                            <Package className="h-4 w-4" />
-                            Material Report
-                        </Button>
-                    </Link>
                     <ReportControls
                         eventName={event.name}
                         exhibitorReport={exhibitorReport}
@@ -159,84 +147,86 @@ export default async function ReportsPage() {
             </div>
 
             {/* Allocation Summary */}
-            {allocationSummary && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-                    {/* Materials */}
-                    <div className="bg-white rounded-lg shadow-sm p-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-gray-900">Materials</h3>
-                            <Package className="h-5 w-5 text-blue-600" />
-                        </div>
-                        <div className="space-y-3">
-                            {allocationSummary.materials.length === 0 ? (
-                                <p className="text-sm text-gray-500">No allocations</p>
-                            ) : (
-                                allocationSummary.materials.map((item: any) => (
-                                    <div key={item.name} className="text-sm">
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-900">{item.name}</span>
-                                            <span className="font-medium">{item.totalQuantity} {item.unit}</span>
+            {
+                allocationSummary && (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                        {/* Materials */}
+                        <div className="bg-white rounded-lg shadow-sm p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-gray-900">Materials</h3>
+                                <Package className="h-5 w-5 text-blue-600" />
+                            </div>
+                            <div className="space-y-3">
+                                {allocationSummary.materials.length === 0 ? (
+                                    <p className="text-sm text-gray-500">No allocations</p>
+                                ) : (
+                                    allocationSummary.materials.map((item: any) => (
+                                        <div key={item.name} className="text-sm">
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-900">{item.name}</span>
+                                                <span className="font-medium">{item.totalQuantity} {item.unit}</span>
+                                            </div>
+                                            <div className="text-gray-500 text-xs">
+                                                {item.allocations} allocations - ₹{item.totalCost.toFixed(2)}
+                                            </div>
                                         </div>
-                                        <div className="text-gray-500 text-xs">
-                                            {item.allocations} allocations - ₹{item.totalCost.toFixed(2)}
-                                        </div>
-                                    </div>
-                                ))
-                            )}
+                                    ))
+                                )}
+                            </div>
                         </div>
-                    </div>
 
-                    {/* Electrical */}
-                    <div className="bg-white rounded-lg shadow-sm p-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-gray-900">Electrical</h3>
-                            <Zap className="h-5 w-5 text-yellow-600" />
-                        </div>
-                        <div className="space-y-3">
-                            {allocationSummary.electrical.length === 0 ? (
-                                <p className="text-sm text-gray-500">No allocations</p>
-                            ) : (
-                                allocationSummary.electrical.map((item: any) => (
-                                    <div key={item.name} className="text-sm">
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-900">{item.name}</span>
-                                            <span className="font-medium">{item.totalQuantity} units</span>
+                        {/* Electrical */}
+                        <div className="bg-white rounded-lg shadow-sm p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-gray-900">Electrical</h3>
+                                <Zap className="h-5 w-5 text-yellow-600" />
+                            </div>
+                            <div className="space-y-3">
+                                {allocationSummary.electrical.length === 0 ? (
+                                    <p className="text-sm text-gray-500">No allocations</p>
+                                ) : (
+                                    allocationSummary.electrical.map((item: any) => (
+                                        <div key={item.name} className="text-sm">
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-900">{item.name}</span>
+                                                <span className="font-medium">{item.totalQuantity} units</span>
+                                            </div>
+                                            <div className="text-gray-500 text-xs">
+                                                {item.totalWattage}W - ₹{item.totalCost.toFixed(2)}
+                                            </div>
                                         </div>
-                                        <div className="text-gray-500 text-xs">
-                                            {item.totalWattage}W - ₹{item.totalCost.toFixed(2)}
-                                        </div>
-                                    </div>
-                                ))
-                            )}
+                                    ))
+                                )}
+                            </div>
                         </div>
-                    </div>
 
-                    {/* Sheds */}
-                    <div className="bg-white rounded-lg shadow-sm p-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-gray-900">Sheds</h3>
-                            <Home className="h-5 w-5 text-green-600" />
-                        </div>
-                        <div className="space-y-3">
-                            {allocationSummary.sheds.length === 0 ? (
-                                <p className="text-sm text-gray-500">No allocations</p>
-                            ) : (
-                                allocationSummary.sheds.map((item: any) => (
-                                    <div key={item.name} className="text-sm">
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-900">{item.name}</span>
-                                            <span className="font-medium">{item.allocations}</span>
+                        {/* Sheds */}
+                        <div className="bg-white rounded-lg shadow-sm p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-gray-900">Sheds</h3>
+                                <Home className="h-5 w-5 text-green-600" />
+                            </div>
+                            <div className="space-y-3">
+                                {allocationSummary.sheds.length === 0 ? (
+                                    <p className="text-sm text-gray-500">No allocations</p>
+                                ) : (
+                                    allocationSummary.sheds.map((item: any) => (
+                                        <div key={item.name} className="text-sm">
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-900">{item.name}</span>
+                                                <span className="font-medium">{item.allocations}</span>
+                                            </div>
+                                            <div className="text-gray-500 text-xs">
+                                                {item.dimensions} - ₹{item.totalCost.toFixed(2)}
+                                            </div>
                                         </div>
-                                        <div className="text-gray-500 text-xs">
-                                            {item.dimensions} - ₹{item.totalCost.toFixed(2)}
-                                        </div>
-                                    </div>
-                                ))
-                            )}
+                                    ))
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Exhibitor Report */}
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -248,7 +238,10 @@ export default async function ReportsPage() {
                         <thead className="bg-gray-50">
                             <tr>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                                    Exhibitor
+                                    Facia Name (Exhibitor)
+                                </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                    Size
                                 </th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                                     Space
@@ -278,11 +271,17 @@ export default async function ReportsPage() {
                                 <tr key={exhibitor.id} className="hover:bg-gray-50">
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="text-sm font-medium text-gray-900">
-                                            {exhibitor.name}
+                                            {exhibitor.faciaName || exhibitor.name}
                                         </div>
                                         <div className="text-sm text-gray-500">
+                                            {exhibitor.faciaName && exhibitor.name !== exhibitor.faciaName ? (
+                                                <span className="block text-xs">{exhibitor.name}</span>
+                                            ) : null}
                                             {exhibitor.phone}
                                         </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                        {exhibitor.bookings.map((b: any) => b.space.category.dimensions).join(', ')}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                         ₹{exhibitor.totals.spaceTotal.toFixed(2)}
@@ -300,7 +299,7 @@ export default async function ReportsPage() {
                                         ₹{exhibitor.totals.totalCost.toFixed(2)}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">
-                                        ₹{exhibitor.totals.advancePaid.toFixed(2)}
+                                        ₹{exhibitor.totals.totalPaid.toFixed(2)}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <span className={`text-sm font-medium ${exhibitor.totals.balance > 0 ? 'text-red-600' : 'text-green-600'
@@ -314,7 +313,7 @@ export default async function ReportsPage() {
                     </table>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }
 

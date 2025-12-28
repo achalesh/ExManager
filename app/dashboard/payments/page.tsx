@@ -11,8 +11,8 @@ export default async function PaymentCollectionPage() {
 
     const exhibitors = await getBillingSummary(session.activeEventId);
 
-    // Sort by pending amount descending to prioritize those who owe money
-    const sortedExhibitors = [...exhibitors].sort((a, b) => b.balance - a.balance);
+    // Sort alphabetically by name for easier searching
+    const sortedExhibitors = [...exhibitors].sort((a, b) => a.name.localeCompare(b.name));
 
     return (
         <div className="max-w-7xl mx-auto p-6">

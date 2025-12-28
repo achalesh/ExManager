@@ -171,3 +171,13 @@
     @apply left-[150%] transition-[left] duration-1000 ease-in-out;
   }
 }
+
+@media print {
+    @page {
+        margin: 20mm;
+    }
+    body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}

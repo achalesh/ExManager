@@ -186,6 +186,60 @@ export async function getExhibitorReport(eventId: number) {
     }).filter(e => e.bookings.length > 0); // Only exhibitors with bookings
 }
 
+export async function getPaymentReport(eventId: number) {
+    const session = await getSession();
+
+    if (!session) {
+        return [];
+    }
+
+    const payments = await prisma.payment.findMany({
+        where: {
+            OR: [
+                { invoice: { eventId } }, // Payments linked to event invoices
+                {
+                    // Or payments linked to exhibitors of this event (if direct linkage is missing, fallback)
+                    // The schema shows Payment has optional invoiceId.
+                    // If invoiceId is null, we might rely on exhibitor.bookings for event context?
+                    // Actually, the schema doesn't have eventId on Payment. 
+                    // But our recordPayment puts it on invoice? Or does it?
+                    // recordPayment doesn't seem to link to Invoice in the code I saw! 
+                    // Wait, `recordPayment` in `payment-actions.ts` (lines 40-52) does NOT set invoiceId.
+                    // It only sets exhibitorId. 
+                    // This is a data model issue.
+                    // However, we can filter by exhibitors who are part of this event.
+                    exhibitor: {
+                        bookings: {
+                            some: { eventId }
+                        }
+                    }
+                }
+            ]
+        },
+        include: {
+            exhibitor: {
+                select: {
+                    name: true,
+                    faciaName: true,
+                    bookings: {
+                        where: { eventId },
+                        include: { space: true }
+                    }
+                }
+            }
+        },
+        orderBy: {
+            paymentDate: 'desc'
+        }
+    });
+
+    return payments.map(p => ({
+        ...p,
+        exhibitorName: p.exhibitor.faciaName || p.exhibitor.name,
+        space: p.exhibitor.bookings.map(b => b.space.label).join(', ')
+    }));
+}
+
 export async function getAllocationSummary(eventId: number) {
     const session = await getSession();
 

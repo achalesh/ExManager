@@ -75,8 +75,6 @@ export function DashboardNav({ session }: DashboardNavProps) {
     const ticketingItems = [
         { href: '/dashboard/ticketing', label: 'Ticket Counter', icon: Ticket, roles: ['Admin', 'Manager', 'Staff', 'Operations'] },
         { href: '/dashboard/ticketing/staff', label: 'Ticket Allocation', icon: Users, roles: ['Admin', 'Manager'] },
-        { href: '/dashboard/reports/ticketing', label: 'Sales Overview', icon: BarChart3, roles: ['Admin', 'Manager', 'Staff'] },
-        { href: '/dashboard/reports/sales', label: 'Sold Ticket Details', icon: Receipt, roles: ['Admin', 'Manager', 'Office', 'Accountant'] }, // Added this
         // Settings options - restricted to Manager/Admin
         { href: '/dashboard/settings/tickets', label: 'Configuration', icon: Settings, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/settings/inventory', label: 'Stock Registry', icon: Package, roles: ['Admin', 'Manager'] },
@@ -84,9 +82,13 @@ export function DashboardNav({ session }: DashboardNavProps) {
 
     const reportItems = [
         { href: '/dashboard/reports', label: 'General Reports', icon: BarChart3 },
-        { href: '/dashboard/reports/electrical', label: 'Electrical Reports', icon: Zap },
+        { href: '/dashboard/reports/allocations', label: 'Space Report', icon: LayoutGrid },
         { href: '/dashboard/reports/materials', label: 'Material Reports', icon: Package },
+        { href: '/dashboard/reports/electrical', label: 'Electrical Reports', icon: Zap },
         { href: '/dashboard/reports/sheds', label: 'Shed Reports', icon: HomeIcon },
+        { href: '/dashboard/reports/payments', label: 'Payment Report', icon: IndianRupee },
+        { href: '/dashboard/reports/ticketing', label: 'Sales Overview', icon: BarChart3, roles: ['Admin', 'Manager', 'Staff'] },
+        { href: '/dashboard/reports/sales', label: 'Sold Ticket Details', icon: Receipt, roles: ['Admin', 'Manager', 'Office', 'Accountant'] },
     ];
 
     const settingsItems = [
@@ -237,13 +239,24 @@ export function DashboardNav({ session }: DashboardNavProps) {
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                                {reportItems.map(item => (
-                                    <DropdownMenuItem key={item.href} asChild>
-                                        <Link href={item.href} className="flex items-center gap-2">
-                                            {item.label}
-                                        </Link>
-                                    </DropdownMenuItem>
-                                ))}
+                                {reportItems.map(item => {
+                                    if (item.roles) {
+                                        const hasRole = item.roles.some(r => r === session.roleName);
+                                        // Allow Admin/Manager fallback logic if strict checking isn't perfect, but here we can just check if user has ONE of the roles.
+                                        // But logic above was: `isRestricted && !isManager`. 
+                                        // Let's use simple include.
+                                        if (!hasRole && !isManager) return null; // Simple assumption: Managers see almost everything.
+                                    }
+
+                                    return (
+                                        <DropdownMenuItem key={item.href} asChild>
+                                            <Link href={item.href} className="flex items-center gap-2">
+                                                {item.icon && <item.icon className="h-4 w-4" />}
+                                                {item.label}
+                                            </Link>
+                                        </DropdownMenuItem>
+                                    );
+                                })}
                             </DropdownMenuContent>
                         </DropdownMenu>
 
@@ -361,17 +374,23 @@ export function DashboardNav({ session }: DashboardNavProps) {
 
 
                         <div className="pt-2 pb-1 px-3 text-xs font-semibold text-gray-500 uppercase mt-2">Reports</div>
-                        {reportItems.map(item => (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                onClick={() => setMobileMenuOpen(false)}
-                                className="flex items-center gap-2 px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100"
-                            >
-                                <item.icon className="h-5 w-5" />
-                                {item.label}
-                            </Link>
-                        ))}
+                        {reportItems.map(item => {
+                            if (item.roles) {
+                                const hasRole = item.roles.some(r => r === session.roleName);
+                                if (!hasRole && !isManager) return null;
+                            }
+                            return (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    onClick={() => setMobileMenuOpen(false)}
+                                    className="flex items-center gap-2 px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100"
+                                >
+                                    <item.icon className="h-5 w-5" />
+                                    {item.label}
+                                </Link>
+                            );
+                        })}
 
                         {isManager && (
                             <>

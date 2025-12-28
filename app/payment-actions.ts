@@ -118,19 +118,25 @@ export async function deletePayment(id: number) {
     }
 }
 
-export async function updatePayment(id: number, data: { amount?: number, paymentMethod?: string, notes?: string, category?: string }) {
+export async function updatePayment(id: number, data: { amount?: number, paymentMethod?: string, notes?: string, category?: string, paymentDate?: Date | string }) {
     const session = await getSession();
     if (!session || !['Admin', 'Manager', 'Accountant'].includes(session.roleName)) {
         return { success: false, error: 'Unauthorized' };
     }
 
     try {
+        const updateData: any = {
+            ...data,
+            collectedBy: (session.name || 'Admin') + ' (Edit)',
+        };
+
+        if (data.paymentDate) {
+            updateData.paymentDate = new Date(data.paymentDate);
+        }
+
         const payment = await prisma.payment.update({
             where: { id },
-            data: {
-                ...data,
-                collectedBy: (session.name || 'Admin') + ' (Edit)',
-            }
+            data: updateData
         });
         revalidatePath(`/dashboard/billing/${payment.exhibitorId}`);
         return { success: true };
