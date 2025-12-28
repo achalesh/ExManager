@@ -149,6 +149,9 @@ export async function getExhibitorReport(eventId: number) {
             shedAllocations: {
                 where: { eventId },
                 include: { shed: true }
+            },
+            payments: {
+                where: { invoice: { eventId } }
             }
         }
     });
@@ -160,7 +163,12 @@ export async function getExhibitorReport(eventId: number) {
         const electricalTotal = exhibitor.electricalAllocations.reduce((sum, a) => sum + a.totalPrice, 0);
         const shedTotal = exhibitor.shedAllocations.reduce((sum, a) => sum + a.price, 0);
         const totalCost = spaceTotal + materialTotal + electricalTotal + shedTotal;
-        const balance = totalCost - exhibitor.advancePaid;
+
+        // Calculate Total Paid
+        const paymentsTotal = exhibitor.payments.reduce((sum, p) => sum + p.amount, 0);
+        const totalPaid = paymentsTotal + exhibitor.advancePaid;
+
+        const balance = totalCost - totalPaid;
 
         return {
             ...exhibitor,
@@ -171,6 +179,7 @@ export async function getExhibitorReport(eventId: number) {
                 shedTotal,
                 totalCost,
                 advancePaid: exhibitor.advancePaid,
+                totalPaid,
                 balance,
             }
         };
