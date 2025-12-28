@@ -24,18 +24,16 @@ export async function recordPayment(data: z.infer<typeof recordPaymentSchema>) {
     try {
         const parsed = recordPaymentSchema.parse(data);
 
-        // Check for duplicate receipt number
-        const existing = await prisma.payment.findFirst({
-            where: {
-                receiptNumber: parsed.receiptNumber,
-                // Ideally scoped to event, but receipt numbers are usually global or tied to prefix. 
-                // Schema has unique constraint on receiptNumber globally.
-            }
-        });
+        // Check for duplicate receipt number - DISABLED to allow splits
+        // const existing = await prisma.payment.findFirst({
+        //     where: {
+        //         receiptNumber: parsed.receiptNumber,
+        //     }
+        // });
 
-        if (existing) {
-            return { success: false, error: `Receipt Number ${parsed.receiptNumber} already exists.` };
-        }
+        // if (existing) {
+        //     return { success: false, error: `Receipt Number ${parsed.receiptNumber} already exists.` };
+        // }
 
         const payment = await prisma.payment.create({
             data: {
@@ -115,6 +113,60 @@ export async function deletePayment(id: number) {
     } catch (error) {
         console.error('Delete payment error:', error);
         return { success: false, error: 'Failed to delete payment' };
+    }
+}
+
+// Batch operations for Receipts
+export async function deletePaymentReceipt(receiptNumber: string) {
+    const session = await getSession();
+    if (!session || !['Admin', 'Manager', 'Accountant'].includes(session.roleName)) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const payments = await prisma.payment.findMany({ where: { receiptNumber } });
+        if (payments.length > 0) {
+            await prisma.payment.deleteMany({ where: { receiptNumber } });
+            revalidatePath(`/dashboard/billing/${payments[0].exhibitorId}`);
+        }
+        return { success: true };
+    } catch (error) {
+        console.error('Delete receipt error:', error);
+        return { success: false, error: 'Failed to delete receipt' };
+    }
+}
+
+export async function updatePaymentReceipt(currentReceiptNumber: string, data: { receiptNumber?: string, paymentDate?: Date | string, notes?: string, category?: string }) {
+    const session = await getSession();
+    if (!session || !['Admin', 'Manager', 'Accountant'].includes(session.roleName)) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const updateData: any = {
+            notes: data.notes,
+            category: data.category,
+            collectedBy: (session.name || 'Admin') + ' (Edit)',
+        };
+
+        if (data.receiptNumber) updateData.receiptNumber = data.receiptNumber;
+        if (data.paymentDate) updateData.paymentDate = new Date(data.paymentDate);
+
+        // Find exhibitor first for revalidation
+        const payment = await prisma.payment.findFirst({ where: { receiptNumber: currentReceiptNumber } });
+
+        await prisma.payment.updateMany({
+            where: { receiptNumber: currentReceiptNumber },
+            data: updateData
+        });
+
+        if (payment) {
+            revalidatePath(`/dashboard/billing/${payment.exhibitorId}`);
+        }
+        return { success: true };
+    } catch (error) {
+        console.error('Update receipt error:', error);
+        return { success: false, error: 'Failed to update receipt' };
     }
 }
 

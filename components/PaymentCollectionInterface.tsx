@@ -103,21 +103,16 @@ export function PaymentCollectionInterface({ exhibitors, eventId }: PaymentColle
             const validSplits = splits.filter(s => parseFloat(s.amount) > 0);
             if (validSplits.length === 0) throw new Error("No valid amounts entered");
 
-            let suffixIndex = 1;
             for (const split of validSplits) {
                 paymentsToSave.push({
                     exhibitorId: selectedExhibitorId,
                     eventId,
                     amount: parseFloat(split.amount),
                     paymentMethod: split.method,
-                    // Append -1, -2 etc. if multiple, or just base if single? 
-                    // User asked for "Always show split mode", implies we treat everything as a collection of payments.
-                    // To keep it clean, if there is only ONE valid split, maybe don't suffix?
-                    // But for consistency let's stick to the suffix logic or simple check.
-                    receiptNumber: validSplits.length > 1 ? `${formData.receiptNumber}-${suffixIndex++}` : formData.receiptNumber,
+                    // Use same receipt number for all splits
+                    receiptNumber: formData.receiptNumber,
                     category: formData.category,
-                    // referenceNumber: formData.referenceNumber, // Removed as it's not in formData anymore
-                    notes: formData.notes + (validSplits.length > 1 ? ` (Split ${suffixIndex - 1})` : ''),
+                    notes: formData.notes,
                     date: formData.date
                 });
             }
@@ -131,13 +126,12 @@ export function PaymentCollectionInterface({ exhibitors, eventId }: PaymentColle
                 alert(`Some payments failed: ${failures.map(f => f.error).join(', ')}`);
             } else {
                 // Success logic
-                // Success logic
                 // Extract event/exhibitor from the first successful result
                 const firstResultData = results[0].data;
 
                 const paymentDataForReceipt = {
                     ...paymentsToSave[0],
-                    receiptNumber: validSplits.length > 1 ? `${formData.receiptNumber}-ALL` : formData.receiptNumber,
+                    receiptNumber: formData.receiptNumber, // No suffix, just the base number
                     amount: totalAmount,
                     paymentMethod: validSplits.length > 1 ? 'Split' : validSplits[0].method,
                     id: Date.now(),
@@ -154,8 +148,21 @@ export function PaymentCollectionInterface({ exhibitors, eventId }: PaymentColle
                 setFormData(prev => ({ ...prev, notes: '' })); // Only clear notes
                 setSplits([{ amount: '', method: 'Cash' }, { amount: '', method: 'UPI' }]);
                 refreshReceiptNumber();
-                const updated = await fetchExhibitorDetails(selectedExhibitorId, eventId);
-                setFetchedDetails(updated);
+
+                // UX: Reset selection and focus search for next entry
+                if (!print) {
+                    // Only if not printing (because print opens a sheet, we don't want to lose context behind it immediately)
+                    setSelectedExhibitorId(null);
+                    // Small timeout to allow UI to reset before opening
+                    setTimeout(() => setOpenCombobox(true), 100);
+                } else {
+                    // If printing, we keep context so they can see what they printed, 
+                    // but maybe we can offer a "Next" button in the receipt sheet or just let them close it.
+                    // For now, let's just refresh the details as before.
+                    const updated = await fetchExhibitorDetails(selectedExhibitorId, eventId);
+                    setFetchedDetails(updated);
+                }
+
                 router.refresh();
             }
 
@@ -166,6 +173,13 @@ export function PaymentCollectionInterface({ exhibitors, eventId }: PaymentColle
             setLoading(false);
         }
     };
+
+    // Auto-focus on mount
+    useEffect(() => {
+        // slight delay to ensure hydration
+        const timer = setTimeout(() => setOpenCombobox(true), 300);
+        return () => clearTimeout(timer);
+    }, []);
 
     return (
         <div className="space-y-6">

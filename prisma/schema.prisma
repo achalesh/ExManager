@@ -393,7 +393,7 @@ model Invoice {
 
 model Payment {
   id              Int       @id @default(autoincrement())
-  receiptNumber   String    @unique // e.g. RCP-2024-001
+  receiptNumber   String    // e.g. RCP-2024-001
   
   exhibitorId     Int
   exhibitor       Exhibitor @relation(fields: [exhibitorId], references: [id])
