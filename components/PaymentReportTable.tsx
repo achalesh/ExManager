@@ -174,7 +174,7 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
                 }));
                 router.refresh();
             } else {
-                alert('Update failed: ' + res.error);
+                alert('Update failed: ' + (('error' in res) ? res.error : 'Unknown error'));
             }
         } catch (err) {
             console.error(err);
