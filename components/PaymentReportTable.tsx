@@ -53,9 +53,135 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
     const [dateFilter, setDateFilter] = useState<Date | undefined>(undefined);
     const isAdmin = role === 'Admin';
 
-    // ... (grouping, filtering, stats)
+    const [editReceipt, setEditReceipt] = useState<GroupedPayment | null>(null);
+    const [deleteReceiptNum, setDeleteReceiptNum] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
 
-    // ... (handlers)
+    // Group payments by Receipt Number
+    const groupedPayments: GroupedPayment[] = [];
+    const receiptMap = new Map<string, Payment[]>();
+
+    payments.forEach(p => {
+        const existing = receiptMap.get(p.receiptNumber) || [];
+        existing.push(p);
+        receiptMap.set(p.receiptNumber, existing);
+    });
+
+    // Create sorted array of grouped payments
+    Array.from(receiptMap.entries()).forEach(([receipt, items]) => {
+        const first = items[0];
+        const total = items.reduce((sum, i) => sum + i.amount, 0);
+        const methods = Array.from(new Set(items.map(i => i.paymentMethod)));
+
+        groupedPayments.push({
+            receiptNumber: receipt,
+            date: new Date(first.paymentDate),
+            exhibitorName: first.exhibitorName,
+            space: first.space,
+            category: first.category,
+            totalAmount: total,
+            methods: methods,
+            notes: items.map(i => i.notes).filter(Boolean).join('; '),
+            collectedBy: first.collectedBy || '-',
+            ids: items.map(i => i.id),
+            isSplit: items.length > 1
+        });
+    });
+
+    // Sort by date desc
+    groupedPayments.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+    // Filter
+    const filteredPayments = groupedPayments.filter(p => {
+        const matchesSearch =
+            p.receiptNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            p.exhibitorName.toLowerCase().includes(searchTerm.toLowerCase());
+
+        const matchesMethod = methodFilter === 'All' || p.methods.includes(methodFilter);
+
+        const matchesDate = !dateFilter ||
+            (p.date.getDate() === dateFilter.getDate() &&
+                p.date.getMonth() === dateFilter.getMonth() &&
+                p.date.getFullYear() === dateFilter.getFullYear());
+
+        return matchesSearch && matchesMethod && matchesDate;
+    });
+
+    const totalAmount = filteredPayments.reduce((sum, p) => sum + p.totalAmount, 0);
+
+    const handleDownloadCSV = () => {
+        const headers = ['Date', 'Receipt No', 'Exhibitor', 'Space', 'Category', 'Amount', 'Method', 'Notes', 'Collected By'];
+        const rows = filteredPayments.map(p => [
+            format(p.date, 'yyyy-MM-dd'),
+            p.receiptNumber,
+            p.exhibitorName,
+            p.space,
+            p.category,
+            p.totalAmount,
+            p.methods.join('/'),
+            p.notes,
+            p.collectedBy
+        ]);
+
+        const csvContent = [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `payment_report_${format(new Date(), 'yyyyMMdd')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleUpdate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editReceipt) return;
+        setLoading(true);
+
+        try {
+            // Logic for update would go here - confusing as it depends on whether we update singular or batch
+            // The logic from previous file seems to assume we call updatePaymentReceipt for the whole group
+            const res = await updatePaymentReceipt({
+                receiptNumber: editReceipt.receiptNumber,
+                date: editReceipt.date,
+                notes: editReceipt.notes,
+                // For split payments, we can't edit amount/method easily here via this UI
+                // If not split, we can
+                ...(!editReceipt.isSplit ? {
+                    amount: editReceipt.totalAmount,
+                    paymentMethod: editReceipt.methods[0]
+                } : {})
+            });
+
+            if (res.success) {
+                // Refresh logic - ideally router.refresh() but local state update is faster
+                setEditReceipt(null);
+                setPayments(prev => prev.map(p => {
+                    if (p.receiptNumber === editReceipt.receiptNumber) {
+                        return {
+                            ...p,
+                            paymentDate: editReceipt.date,
+                            notes: editReceipt.notes, // Simplified
+                            ...(!editReceipt.isSplit ? {
+                                amount: editReceipt.totalAmount,
+                                paymentMethod: editReceipt.methods[0]
+                            } : {})
+                        };
+                    }
+                    return p;
+                }));
+                router.refresh();
+            } else {
+                alert('Update failed: ' + res.error);
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Update failed');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
         <div className="space-y-4">
