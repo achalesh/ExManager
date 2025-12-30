@@ -47,6 +47,7 @@ interface PaymentReportTableProps {
 }
 
 export function PaymentReportTable({ initialPayments, role }: PaymentReportTableProps) {
+    const router = useRouter();
     const [payments, setPayments] = useState(initialPayments);
     const [searchTerm, setSearchTerm] = useState('');
     const [methodFilter, setMethodFilter] = useState('All');
