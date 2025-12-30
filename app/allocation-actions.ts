@@ -1670,7 +1670,7 @@ export async function returnBatchItems(data: {
                     select: { uniqueCode: true }
                 });
 
-                const uniqueCodes = returnedItems.map(i => i.uniqueCode).join(', ');
+                const uniqueCodes = returnedItems.map(i => i.uniqueCode);
 
                 await tx.materialReturnRecord.create({
                     data: {
