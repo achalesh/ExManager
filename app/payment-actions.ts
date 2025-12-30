@@ -97,10 +97,23 @@ export async function getNextReceiptNumber() {
     }
 }
 
+import { createApprovalRequest } from './approval-actions';
+
 export async function deletePayment(id: number) {
     const session = await getSession();
     if (!session || !['Admin', 'Manager', 'Accountant'].includes(session.roleName)) {
         return { success: false, error: 'Unauthorized' };
+    }
+
+    // Role Enforcement
+    if (session.roleName !== 'Admin') {
+        if (session.roleName === 'Accounts' || session.roleName === 'Accountant') {
+            return { success: false, error: 'Accounts role is not authorized to delete payments.' };
+        }
+        if (session.roleName === 'Manager') {
+            // Manager delete -> Approval
+            return await createApprovalRequest('DELETE', 'Payment', id.toString(), { id }, 'Manager requested delete');
+        }
     }
 
     try {
@@ -123,6 +136,16 @@ export async function deletePaymentReceipt(receiptNumber: string) {
         return { success: false, error: 'Unauthorized' };
     }
 
+    // Role Enforcement
+    if (session.roleName !== 'Admin') {
+        if (session.roleName === 'Accounts' || session.roleName === 'Accountant') {
+            return { success: false, error: 'Accounts role is not authorized to delete receipts.' };
+        }
+        if (session.roleName === 'Manager') {
+            return await createApprovalRequest('DELETE', 'Payment', receiptNumber, { receiptNumber }, 'Manager requested receipt delete');
+        }
+    }
+
     try {
         const payments = await prisma.payment.findMany({ where: { receiptNumber } });
         if (payments.length > 0) {
@@ -140,6 +163,12 @@ export async function updatePaymentReceipt(currentReceiptNumber: string, data: {
     const session = await getSession();
     if (!session || !['Admin', 'Manager', 'Accountant'].includes(session.roleName)) {
         return { success: false, error: 'Unauthorized' };
+    }
+
+    // Role Enforcement
+    if (session.roleName !== 'Admin') {
+        // Manager & Accounts -> Approval for Update
+        return await createApprovalRequest('UPDATE', 'Payment', currentReceiptNumber, data, `${session.roleName} requested receipt update`);
     }
 
     try {
@@ -174,6 +203,11 @@ export async function updatePayment(id: number, data: { amount?: number, payment
     const session = await getSession();
     if (!session || !['Admin', 'Manager', 'Accountant'].includes(session.roleName)) {
         return { success: false, error: 'Unauthorized' };
+    }
+
+    // Role Enforcement
+    if (session.roleName !== 'Admin') {
+        return await createApprovalRequest('UPDATE', 'Payment', id.toString(), data, `${session.roleName} requested payment update`);
     }
 
     try {

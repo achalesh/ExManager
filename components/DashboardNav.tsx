@@ -21,7 +21,8 @@ import {
     LayoutGrid,
     Briefcase,
     Receipt,
-    IndianRupee
+    IndianRupee,
+    RotateCcw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -54,41 +55,49 @@ export function DashboardNav({ session }: DashboardNavProps) {
         router.refresh();
     }
 
+    const isStaff = session.roleName === 'Staff';
+    const isAccounts = session.roleName === 'Accounts';
+    const isManager = session.roleName === 'Manager';
     const isAdmin = session.roleName === 'Admin';
-    const isManager = session.roleName === 'Manager' || isAdmin;
+
+    // Role-based visibility logic
+    // Staff: Only Material Allocation
+    // Accounts: Operations (Payments, Accounts only?), Operations + Reports (filtered)
+    // Manager: Allocations, Operations, Ticketing, Reports. No Admin/Settings?
+    // Admin: Everything
 
     const allocationItems = [
-        { href: '/dashboard/allocate-space', label: 'Allocate Space', icon: MapPin },
-        { href: '/dashboard/allocate-material', label: 'Allocate Material', icon: Package },
-        { href: '/dashboard/allocate-electric', label: 'Allocate Electric', icon: Zap },
-        { href: '/dashboard/allocate-shed', label: 'Allocate Shed', icon: HomeIcon },
+        { href: '/dashboard/allocate-space', label: 'Allocate Space', icon: MapPin, roles: ['Admin', 'Manager'] },
+        { href: '/dashboard/allocate-material', label: 'Allocate Material', icon: Package, roles: ['Admin', 'Manager', 'Staff'] },
+        { href: '/dashboard/return-material', label: 'Return Material', icon: RotateCcw, roles: ['Admin', 'Manager', 'Staff'] },
+        { href: '/dashboard/allocate-electric', label: 'Allocate Electric', icon: Zap, roles: ['Admin', 'Manager'] },
+        { href: '/dashboard/allocate-shed', label: 'Allocate Shed', icon: HomeIcon, roles: ['Admin', 'Manager'] },
     ];
 
     const operationsItems = [
-        { href: '/dashboard/register-exhibitor', label: 'Register Exhibitor', icon: UserPlus },
-        { href: '/dashboard/exhibitors', label: 'Exhibitor List', icon: Users },
-        { href: '/dashboard/payments', label: 'Payment Collection', icon: IndianRupee },
-        { href: '/dashboard/accounts', label: 'Daily Accounts', icon: Receipt },
-        { href: '/dashboard/staff', label: 'Event Staff', icon: Users },
+        { href: '/dashboard/register-exhibitor', label: 'Register Exhibitor', icon: UserPlus, roles: ['Admin', 'Manager'] },
+        { href: '/dashboard/exhibitors', label: 'Exhibitor List', icon: Users, roles: ['Admin', 'Manager', 'Accounts'] },
+        { href: '/dashboard/payments', label: 'Payment Collection', icon: IndianRupee, roles: ['Admin', 'Manager', 'Accounts'] },
+        { href: '/dashboard/accounts', label: 'Daily Accounts', icon: Receipt, roles: ['Admin', 'Manager', 'Accounts'] },
+        { href: '/dashboard/staff', label: 'Event Staff', icon: Users, roles: ['Admin', 'Manager'] },
     ];
 
     const ticketingItems = [
-        { href: '/dashboard/ticketing', label: 'Ticket Counter', icon: Ticket, roles: ['Admin', 'Manager', 'Staff', 'Operations'] },
+        { href: '/dashboard/ticketing', label: 'Ticket Counter', icon: Ticket, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/ticketing/staff', label: 'Ticket Allocation', icon: Users, roles: ['Admin', 'Manager'] },
-        // Settings options - restricted to Manager/Admin
         { href: '/dashboard/settings/tickets', label: 'Configuration', icon: Settings, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/settings/inventory', label: 'Stock Registry', icon: Package, roles: ['Admin', 'Manager'] },
     ];
 
     const reportItems = [
-        { href: '/dashboard/reports', label: 'General Reports', icon: BarChart3 },
-        { href: '/dashboard/reports/allocations', label: 'Space Report', icon: LayoutGrid },
-        { href: '/dashboard/reports/materials', label: 'Material Reports', icon: Package },
-        { href: '/dashboard/reports/electrical', label: 'Electrical Reports', icon: Zap },
-        { href: '/dashboard/reports/sheds', label: 'Shed Reports', icon: HomeIcon },
-        { href: '/dashboard/reports/payments', label: 'Payment Report', icon: IndianRupee },
-        { href: '/dashboard/reports/ticketing', label: 'Sales Overview', icon: BarChart3, roles: ['Admin', 'Manager', 'Staff'] },
-        { href: '/dashboard/reports/sales', label: 'Sold Ticket Details', icon: Receipt, roles: ['Admin', 'Manager', 'Office', 'Accountant'] },
+        { href: '/dashboard/reports', label: 'General Reports', icon: BarChart3, roles: ['Admin', 'Manager', 'Accounts'] },
+        { href: '/dashboard/reports/allocations', label: 'Space Report', icon: LayoutGrid, roles: ['Admin', 'Manager', 'Accounts'] },
+        { href: '/dashboard/reports/materials', label: 'Material Reports', icon: Package, roles: ['Admin', 'Manager', 'Accounts'] },
+        { href: '/dashboard/reports/electrical', label: 'Electrical Reports', icon: Zap, roles: ['Admin', 'Manager', 'Accounts'] },
+        { href: '/dashboard/reports/sheds', label: 'Shed Reports', icon: HomeIcon, roles: ['Admin', 'Manager', 'Accounts'] },
+        { href: '/dashboard/reports/payments', label: 'Payment Report', icon: IndianRupee, roles: ['Admin', 'Manager', 'Accounts'] },
+        { href: '/dashboard/reports/ticketing', label: 'Sales Overview', icon: BarChart3, roles: ['Admin', 'Manager'] },
+        { href: '/dashboard/reports/sales', label: 'Sold Ticket Details', icon: Receipt, roles: ['Admin', 'Manager', 'Accountant'] },
     ];
 
     const settingsItems = [
@@ -102,7 +111,14 @@ export function DashboardNav({ session }: DashboardNavProps) {
         { href: '/dashboard/admin/events', label: 'Manage Events' },
         { href: '/dashboard/admin/users', label: 'Create User' },
         { href: '/dashboard/admin/roles', label: 'Create Roles' },
+        { href: '/dashboard/admin/approvals', label: 'Approvals' },
     ];
+
+    // Filter items based on role
+    const filteredAllocation = allocationItems.filter(i => i.roles.includes(session.roleName));
+    const filteredOperations = operationsItems.filter(i => i.roles.includes(session.roleName));
+    const filteredTicketing = ticketingItems.filter(i => i.roles.includes(session.roleName));
+    const filteredReports = reportItems.filter(i => i.roles.includes(session.roleName));
 
     return (
         <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 print:hidden">
@@ -139,129 +155,122 @@ export function DashboardNav({ session }: DashboardNavProps) {
                     {/* Desktop Navigation */}
                     <div className="hidden md:flex md:items-center md:space-x-2">
 
-                        {/* Allocations Dropdown */}
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className={`flex items-center gap-1 ${allocationItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''}`}
-                                    suppressHydrationWarning
-                                >
-                                    <LayoutGrid className="h-4 w-4" />
-                                    <span>Allocations</span>
-                                    <ChevronDown className="h-3 w-3" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                {allocationItems.map(item => (
-                                    <DropdownMenuItem key={item.href} asChild>
-                                        <Link href={item.href} className="flex items-center gap-2">
-                                            <item.icon className="h-4 w-4" />
-                                            {item.label}
-                                        </Link>
-                                    </DropdownMenuItem>
-                                ))}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-
-                        {/* Operations Dropdown */}
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className={`flex items-center gap-1 ${operationsItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''}`}
-                                    suppressHydrationWarning
-                                >
-                                    <Briefcase className="h-4 w-4" />
-                                    <span>Operations</span>
-                                    <ChevronDown className="h-3 w-3" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                {operationsItems.map(item => (
-                                    <DropdownMenuItem key={item.href} asChild>
-                                        <Link href={item.href} className="flex items-center gap-2">
-                                            <item.icon className="h-4 w-4" />
-                                            {item.label}
-                                        </Link>
-                                    </DropdownMenuItem>
-                                ))}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-
-                        {/* Ticketing Dropdown */}
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className={`flex items-center gap-1 ${ticketingItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''}`}
-                                    suppressHydrationWarning
-                                >
-                                    <Ticket className="h-4 w-4" />
-                                    <span>Ticketing</span>
-                                    <ChevronDown className="h-3 w-3" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                {ticketingItems.map(item => {
-                                    // Basic Role check logic for menu items
-                                    // If item requires Manager/Admin rights and user isn't one, skip
-                                    const isRestricted = item.roles.every(r => ['Admin', 'Manager'].includes(r));
-                                    if (isRestricted && !isManager) return null;
-
-                                    return (
+                        {/* Allocations Dropdown - Show if any item available */}
+                        {filteredAllocation.length > 0 && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={`flex items-center gap-1 ${allocationItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''}`}
+                                        suppressHydrationWarning
+                                    >
+                                        <LayoutGrid className="h-4 w-4" />
+                                        <span>Allocations</span>
+                                        <ChevronDown className="h-3 w-3" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    {filteredAllocation.map(item => (
                                         <DropdownMenuItem key={item.href} asChild>
                                             <Link href={item.href} className="flex items-center gap-2">
                                                 <item.icon className="h-4 w-4" />
                                                 {item.label}
                                             </Link>
                                         </DropdownMenuItem>
-                                    );
-                                })}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
+
+                        {/* Operations Dropdown */}
+                        {filteredOperations.length > 0 && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={`flex items-center gap-1 ${operationsItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''}`}
+                                        suppressHydrationWarning
+                                    >
+                                        <Briefcase className="h-4 w-4" />
+                                        <span>Operations</span>
+                                        <ChevronDown className="h-3 w-3" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    {filteredOperations.map(item => (
+                                        <DropdownMenuItem key={item.href} asChild>
+                                            <Link href={item.href} className="flex items-center gap-2">
+                                                <item.icon className="h-4 w-4" />
+                                                {item.label}
+                                            </Link>
+                                        </DropdownMenuItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
+
+                        {/* Ticketing Dropdown */}
+                        {filteredTicketing.length > 0 && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={`flex items-center gap-1 ${ticketingItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''}`}
+                                        suppressHydrationWarning
+                                    >
+                                        <Ticket className="h-4 w-4" />
+                                        <span>Ticketing</span>
+                                        <ChevronDown className="h-3 w-3" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    {filteredTicketing.map(item => (
+                                        <DropdownMenuItem key={item.href} asChild>
+                                            <Link href={item.href} className="flex items-center gap-2">
+                                                <item.icon className="h-4 w-4" />
+                                                {item.label}
+                                            </Link>
+                                        </DropdownMenuItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
 
                         {/* Reports Dropdown */}
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className={`flex items-center gap-1 ${reportItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''}`}
-                                    suppressHydrationWarning
-                                >
-                                    <BarChart3 className="h-4 w-4" />
-                                    <span>Reports</span>
-                                    <ChevronDown className="h-3 w-3" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                {reportItems.map(item => {
-                                    if (item.roles) {
-                                        const hasRole = item.roles.some(r => r === session.roleName);
-                                        // Allow Admin/Manager fallback logic if strict checking isn't perfect, but here we can just check if user has ONE of the roles.
-                                        // But logic above was: `isRestricted && !isManager`. 
-                                        // Let's use simple include.
-                                        if (!hasRole && !isManager) return null; // Simple assumption: Managers see almost everything.
-                                    }
-
-                                    return (
+                        {filteredReports.length > 0 && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={`flex items-center gap-1 ${reportItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''}`}
+                                        suppressHydrationWarning
+                                    >
+                                        <BarChart3 className="h-4 w-4" />
+                                        <span>Reports</span>
+                                        <ChevronDown className="h-3 w-3" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    {filteredReports.map(item => (
                                         <DropdownMenuItem key={item.href} asChild>
                                             <Link href={item.href} className="flex items-center gap-2">
                                                 {item.icon && <item.icon className="h-4 w-4" />}
                                                 {item.label}
                                             </Link>
                                         </DropdownMenuItem>
-                                    );
-                                })}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
 
-                        {/* Settings Dropdown */}
-                        {isManager && (
+                        {/* Settings Dropdown - Admin Only based on new request (Manager hidden) */}
+                        {/* Wait, user said Manager shouldn't see Settings. So isAdmin only? */}
+                        {/* "Manager: don't show Settings, User management and Manage Events" */}
+                        {isAdmin && (
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                     <Button variant="ghost" size="sm" className="flex items-center gap-1" suppressHydrationWarning>
@@ -280,7 +289,7 @@ export function DashboardNav({ session }: DashboardNavProps) {
                             </DropdownMenu>
                         )}
 
-                        {/* Admin Dropdown */}
+                        {/* Admin Dropdown - Admin Only */}
                         {isAdmin && (
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>

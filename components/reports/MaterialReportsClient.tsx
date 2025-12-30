@@ -10,13 +10,19 @@ interface MaterialReportsClientProps {
     financialSummary: any[];
     eventName: string;
     totalRevenue: number;
+    showFinancials?: boolean;
+    allowExport?: boolean;
+    shortenItemIds?: boolean;
 }
 
 export function MaterialReportsClient({
     allocations,
     financialSummary,
     eventName,
-    totalRevenue
+    totalRevenue,
+    showFinancials = true,
+    allowExport = true,
+    shortenItemIds = false,
 }: MaterialReportsClientProps) {
     const [printMode, setPrintMode] = useState<'all' | 'detailed' | 'financial'>('all');
 
@@ -84,17 +90,6 @@ export function MaterialReportsClient({
         // Small timeout to allow state update and CSS class application before printing
         setTimeout(() => {
             window.print();
-            // Reset after print dialog closes (or immediately, the dialogue blocks main thread in most browsers)
-            // But checking for 'afterprint' event is safer, though timeout usually suffices for trigger.
-            // We'll reset it after a delay or listen to events. For simplicity here:
-            // logic is handled by CSS classes based on 'printMode' state.
-            // We need to reset it back to 'all' AFTER the print action is done? 
-            // Actually, if we reset immediately, the print preview might lose the filtering.
-            // Best standard: Listen for window.onafterprint or just keep the state until user changes it?
-            // "window.print()" is blocking in many API versions. 
-            // Let's use specific print styles that read a data-attribute on the body or container? 
-            // Or just rely on the fact that we rendered with that state.
-            // We will hook into onafterprint to reset state.
         }, 100);
     };
 
@@ -135,16 +130,18 @@ export function MaterialReportsClient({
             <div className="detailed-section mb-12 break-inside-avoid">
                 <div className="flex items-center justify-between mb-4 bg-gray-100 p-2 rounded">
                     <h2 className="text-xl font-bold text-gray-800">
-                        1. Detailed Material Allocation List
+                        {showFinancials ? '1. ' : ''}Detailed Material Allocation List
                     </h2>
-                    <div className="flex gap-2 no-print">
-                        <Button variant="outline" size="sm" onClick={() => downloadCSV('detailed')} className="gap-2 text-xs h-8">
-                            <Download className="h-3 w-3" /> CSV
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handlePrint('detailed')} className="gap-2 text-xs h-8">
-                            <Printer className="h-3 w-3" /> Print
-                        </Button>
-                    </div>
+                    {allowExport && (
+                        <div className="flex gap-2 no-print">
+                            <Button variant="outline" size="sm" onClick={() => downloadCSV('detailed')} className="gap-2 text-xs h-8">
+                                <Download className="h-3 w-3" /> CSV
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handlePrint('detailed')} className="gap-2 text-xs h-8">
+                                <Printer className="h-3 w-3" /> Print
+                            </Button>
+                        </div>
+                    )}
                 </div>
 
                 <div className="overflow-x-auto">
@@ -184,7 +181,7 @@ export function MaterialReportsClient({
                                             </td>
                                             <td className="px-4 py-2 align-top text-xs font-mono text-gray-600 break-words">
                                                 {alloc.items && alloc.items.length > 0 ? (
-                                                    alloc.items.map((i: any) => i.uniqueCode).join(', ')
+                                                    alloc.items.map((i: any) => shortenItemIds ? i.uniqueCode.slice(-3) : i.uniqueCode).join(', ')
                                                 ) : (
                                                     <span className="text-gray-400 italic">No specific IDs (Bulk)</span>
                                                 )}
@@ -199,63 +196,67 @@ export function MaterialReportsClient({
             </div>
 
             {/* Section 2: Financial Summary */}
-            <div className="financial-section break-before-page">
-                <div className="flex items-center justify-between mb-4 bg-gray-100 p-2 rounded">
-                    <h2 className="text-xl font-bold text-gray-800">
-                        2. Payment Details of Allocated Material
-                    </h2>
-                    <div className="flex gap-2 no-print">
-                        <Button variant="outline" size="sm" onClick={() => downloadCSV('financial')} className="gap-2 text-xs h-8">
-                            <Download className="h-3 w-3" /> CSV
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handlePrint('financial')} className="gap-2 text-xs h-8">
-                            <Printer className="h-3 w-3" /> Print
-                        </Button>
+            {showFinancials && (
+                <div className="financial-section break-before-page">
+                    <div className="flex items-center justify-between mb-4 bg-gray-100 p-2 rounded">
+                        <h2 className="text-xl font-bold text-gray-800">
+                            2. Payment Details of Allocated Material
+                        </h2>
+                        {allowExport && (
+                            <div className="flex gap-2 no-print">
+                                <Button variant="outline" size="sm" onClick={() => downloadCSV('financial')} className="gap-2 text-xs h-8">
+                                    <Download className="h-3 w-3" /> CSV
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => handlePrint('financial')} className="gap-2 text-xs h-8">
+                                    <Printer className="h-3 w-3" /> Print
+                                </Button>
+                            </div>
+                        )}
                     </div>
-                </div>
 
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 border text-sm">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase border-r">Exhibitor</th>
-                                <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase border-r">Space</th>
-                                <th className="px-4 py-3 text-center font-bold text-gray-700 uppercase border-r">Total Items</th>
-                                <th className="px-4 py-3 text-right font-bold text-gray-700 uppercase">Total Material Cost</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
-                            {financialSummary.map((item: any) => (
-                                <tr key={item.exhibitor.id} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 border-r">
-                                        <div className="font-bold text-gray-900">{item.exhibitor.name}</div>
-                                        {item.exhibitor.faciaName && <div className="text-xs text-gray-500">Facia: {item.exhibitor.faciaName}</div>}
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200 border text-sm">
+                            <thead className="bg-gray-50">
+                                <tr>
+                                    <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase border-r">Exhibitor</th>
+                                    <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase border-r">Space</th>
+                                    <th className="px-4 py-3 text-center font-bold text-gray-700 uppercase border-r">Total Items</th>
+                                    <th className="px-4 py-3 text-right font-bold text-gray-700 uppercase">Total Material Cost</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                                {financialSummary.map((item: any) => (
+                                    <tr key={item.exhibitor.id} className="hover:bg-gray-50">
+                                        <td className="px-4 py-3 border-r">
+                                            <div className="font-bold text-gray-900">{item.exhibitor.name}</div>
+                                            {item.exhibitor.faciaName && <div className="text-xs text-gray-500">Facia: {item.exhibitor.faciaName}</div>}
+                                        </td>
+                                        <td className="px-4 py-3 border-r text-gray-600">
+                                            {item.exhibitor.bookings?.[0]?.space?.label || 'N/A'}
+                                        </td>
+                                        <td className="px-4 py-3 border-r text-center font-medium">
+                                            {item.totalItems}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-bold text-gray-900">
+                                            ₹{item.totalCost.toFixed(2)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                            <tfoot className="bg-gray-100 font-bold">
+                                <tr>
+                                    <td colSpan={3} className="px-4 py-3 text-right border-r text-gray-900">
+                                        Grand Total Material Revenue
                                     </td>
-                                    <td className="px-4 py-3 border-r text-gray-600">
-                                        {item.exhibitor.bookings?.[0]?.space?.label || 'N/A'}
-                                    </td>
-                                    <td className="px-4 py-3 border-r text-center font-medium">
-                                        {item.totalItems}
-                                    </td>
-                                    <td className="px-4 py-3 text-right font-bold text-gray-900">
-                                        ₹{item.totalCost.toFixed(2)}
+                                    <td className="px-4 py-3 text-right text-gray-900">
+                                        ₹{totalRevenue.toFixed(2)}
                                     </td>
                                 </tr>
-                            ))}
-                        </tbody>
-                        <tfoot className="bg-gray-100 font-bold">
-                            <tr>
-                                <td colSpan={3} className="px-4 py-3 text-right border-r text-gray-900">
-                                    Grand Total Material Revenue
-                                </td>
-                                <td className="px-4 py-3 text-right text-gray-900">
-                                    ₹{totalRevenue.toFixed(2)}
-                                </td>
-                            </tr>
-                        </tfoot>
-                    </table>
+                            </tfoot>
+                        </table>
+                    </div>
                 </div>
-            </div>
+            )}
 
             <div className="text-center text-xs text-gray-400 mt-8 print:mt-auto">
                 <p>End of Report</p>

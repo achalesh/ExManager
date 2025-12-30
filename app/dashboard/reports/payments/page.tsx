@@ -31,7 +31,7 @@ export default async function PaymentReportPage() {
                 </div>
             </div>
 
-            <PaymentReportTable initialPayments={payments} />
+            <PaymentReportTable initialPayments={payments} role={session.roleName} />
         </div>
     );
 }

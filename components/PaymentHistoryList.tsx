@@ -62,7 +62,7 @@ export function PaymentHistoryList({ payments, onRefresh, event, exhibitor }: Pa
         if (res.success) {
             onRefresh();
         } else {
-            alert(res.error);
+            alert((res as any).error);
         }
     };
 
@@ -92,7 +92,7 @@ export function PaymentHistoryList({ payments, onRefresh, event, exhibitor }: Pa
             setEditingPayment(null);
             onRefresh();
         } else {
-            alert(res.error);
+            alert((res as any).error);
         }
     };
 

@@ -184,6 +184,10 @@ model User {
   auditLogs AuditLog[]
   staffProfile Staff?
   passwordRequests PasswordResetRequest[]
+  
+  requestedApprovals ApprovalRequest[] @relation("RequestedApprovals")
+  reviewedApprovals  ApprovalRequest[] @relation("ReviewedApprovals")
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 }
@@ -271,8 +275,20 @@ model MaterialAllocation {
   isFOC       Boolean   @default(false)
   billNumber  String?
   items       MaterialItem[]
+  returnedCount Int       @default(0)
+  returns     MaterialReturnRecord[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+model MaterialReturnRecord {
+  id           Int                @id @default(autoincrement())
+  allocationId Int
+  allocation   MaterialAllocation @relation(fields: [allocationId], references: [id])
+  quantity     Int
+  returnDate   DateTime           @default(now())
+  remarks      String?
+  itemUniqueCodes String[]        // Store codes of specific items returned if applicable
 }
 
 model ElectricalAllocation {
@@ -438,4 +454,25 @@ model PasswordResetRequest {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   status    String   @default("PENDING") // PENDING, RESOLVED, IGNORED
   createdAt DateTime @default(now())
+}
+
+model ApprovalRequest {
+  id          Int      @id @default(autoincrement())
+  type        String   // "UPDATE", "DELETE"
+  resource    String   // "Payment", "Booking", etc.
+  resourceId  String   // ID of the resource (string to be generic)
+  
+  data        String   // JSON string of proposed changes (for UPDATE) or original data (for DELETE)
+  reason      String?
+  
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  
+  requestedBy Int
+  requester   User     @relation("RequestedApprovals", fields: [requestedBy], references: [id])
+  
+  reviewedBy  Int?
+  reviewer    User?    @relation("ReviewedApprovals", fields: [reviewedBy], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

@@ -1425,3 +1425,270 @@ export async function updateExhibitorElectricalBillNumber(exhibitorId: number, e
         return { success: false, error: 'Failed to update bill number' };
     }
 }
+
+// Return Material
+const returnMaterialSchema = z.object({
+    allocationId: z.number().min(1, "Allocation ID is required"),
+    returnQuantity: z.number().min(1, "Return Quantity must be at least 1"),
+    itemIds: z.array(z.number()).optional(), // Optional, for tracked items
+    remarks: z.string().optional(),
+});
+
+export async function returnMaterial(data: z.infer<typeof returnMaterialSchema>) {
+    const session = await getSession();
+    if (!session) return { success: false, error: 'Unauthorized' };
+
+    try {
+        const { allocationId, returnQuantity, itemIds, remarks } = returnMaterialSchema.parse(data);
+
+        // Fetch Allocation
+        const allocation = await prisma.materialAllocation.findUnique({
+            where: { id: allocationId },
+            include: { items: true }
+        });
+
+        if (!allocation) return { success: false, error: 'Allocation not found' };
+
+        // Validate Quantity
+        const remainingQty = allocation.quantity - allocation.returnedCount;
+        if (returnQuantity > remainingQty) {
+            return { success: false, error: `Cannot return ${returnQuantity}. Only ${remainingQty} remaining.` };
+        }
+
+        await prisma.$transaction(async (tx) => {
+            // 1. Update Allocation Count
+            await tx.materialAllocation.update({
+                where: { id: allocationId },
+                data: { returnedCount: { increment: returnQuantity } }
+            });
+
+            // 2. Handle Tracked Items
+            let returnedItemCodes: string[] = [];
+            if (itemIds && itemIds.length > 0) {
+                // Verify itemIds belong to this allocation
+                const validItems = allocation.items.filter(i => itemIds.includes(i.id));
+                const validItemIds = validItems.map(i => i.id);
+                returnedItemCodes = validItems.map(i => i.uniqueCode);
+
+                if (validItemIds.length > 0) {
+                    await tx.materialItem.updateMany({
+                        where: { id: { in: validItemIds } },
+                        data: {
+                            status: 'Available',
+                            activeAllocationId: null
+                        }
+                    });
+                }
+            }
+
+            // 3. Create Return Record
+            await tx.materialReturnRecord.create({
+                data: {
+                    allocationId,
+                    quantity: returnQuantity,
+                    remarks,
+                    itemUniqueCodes: returnedItemCodes,
+                    returnDate: new Date(),
+                }
+            });
+        });
+
+        revalidatePath('/dashboard/allocate-material');
+        return { success: true };
+
+    } catch (error: any) {
+        console.error('Error returning material:', error);
+        return { success: false, error: error.message || 'Failed to return material' };
+    }
+}
+
+// Get Item Return Details (Scan)
+// Get Item Return Details (Scan)
+export async function getItemReturnDetails(code: string) {
+    const session = await getSession();
+    if (!session) return { success: false, error: 'Unauthorized' };
+
+    try {
+        // 1. Try Exact Match
+        let item = await prisma.materialItem.findUnique({
+            where: { uniqueCode: code },
+            include: {
+                activeAllocation: {
+                    include: {
+                        exhibitor: true,
+                        event: true,
+                        material: true
+                    }
+                },
+                material: true
+            }
+        });
+
+        // 2. If not found, try Suffix Match (only for Allocated items)
+        if (!item) {
+            const matches = await prisma.materialItem.findMany({
+                where: {
+                    uniqueCode: { endsWith: code },
+                    status: 'Allocated'
+                },
+                include: {
+                    activeAllocation: {
+                        include: {
+                            exhibitor: true,
+                            event: true,
+                            material: true
+                        }
+                    },
+                    material: true
+                }
+            });
+
+            if (matches.length === 0) {
+                return { success: false, error: 'Item not found' };
+            }
+            if (matches.length > 1) {
+                // Return matches for selection
+                return {
+                    success: true,
+                    multipleMatches: true,
+                    matches: matches.map(m => ({
+                        item: m,
+                        allocation: m.activeAllocation,
+                        exhibitor: m.activeAllocation?.exhibitor
+                    }))
+                };
+            }
+            item = matches[0];
+        }
+
+        if (item.status !== 'Allocated' || !item.activeAllocation) {
+            return { success: false, error: `Item ${item.uniqueCode} is currently ${item.status} and not allocated.` };
+        }
+
+        // Fetch all other active allocations for this exhibitor
+        console.log(`Fetching allocations for Exhibitor ID: ${item.activeAllocation.exhibitorId}, Event ID: ${item.activeAllocation.eventId}`);
+
+        const allExhibitorAllocations = await prisma.materialAllocation.findMany({
+            where: {
+                exhibitorId: item.activeAllocation.exhibitorId,
+                eventId: item.activeAllocation.eventId,
+            },
+            include: {
+                material: true,
+                items: {
+                    where: { status: 'Allocated' } // Only show currently allocated items
+                }
+            },
+            orderBy: {
+                material: { name: 'asc' }
+            }
+        });
+
+        console.log(`Found ${allExhibitorAllocations.length} total allocations for exhibitor.`);
+
+        // Filter in memory for items that have pending returns
+        const otherAllocations = allExhibitorAllocations.filter(alloc => {
+            const isPending = alloc.returnedCount < alloc.quantity;
+            console.log(`Allocation ${alloc.id} (${alloc.material.name}): Qd=${alloc.quantity}, Rtd=${alloc.returnedCount}, Pending=${isPending}`);
+            return isPending;
+        });
+
+        console.log(`returning ${otherAllocations.length} other allocations.`);
+
+        return {
+            success: true,
+            multipleMatches: false,
+            data: {
+                item,
+                allocation: item.activeAllocation,
+                exhibitor: item.activeAllocation.exhibitor,
+                otherAllocations // Return the list
+            }
+        };
+
+    } catch (error: any) {
+        console.error('Error fetching item details:', error);
+        return { success: false, error: 'Failed to fetch item details' };
+    }
+}
+
+export async function returnBatchItems(data: {
+    items: {
+        allocationId: number;
+        itemId: number;
+    }[];
+    remarks?: string;
+}) {
+    const session = await getSession();
+    if (!session) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const { items, remarks } = data;
+
+        // Group by allocation to minimize lock contention and handle returnedCounts correctly
+        const allocationGroups = items.reduce((acc, item) => {
+            if (!acc[item.allocationId]) {
+                acc[item.allocationId] = [];
+            }
+            acc[item.allocationId].push(item.itemId);
+            return acc;
+        }, {} as Record<number, number[]>);
+
+        await prisma.$transaction(async (tx) => {
+            for (const [allocationIdStr, itemIds] of Object.entries(allocationGroups)) {
+                const allocationId = parseInt(allocationIdStr);
+
+                // 1. Update Allocation Count
+                await tx.materialAllocation.update({
+                    where: { id: allocationId },
+                    data: {
+                        returnedCount: {
+                            increment: itemIds.length
+                        }
+                    }
+                });
+
+                // 2. Update Items to Available
+                await tx.materialItem.updateMany({
+                    where: {
+                        id: { in: itemIds }
+                    },
+                    data: {
+                        status: 'Available',
+                        activeAllocationId: null
+                    }
+                });
+
+                // 3. Create Return Record
+                // We need to fetch details for the record first - efficiently
+                // Or we can just log the specific IDs returned in this batch for this allocation.
+                // Let's look up the codes for these items to store in the record.
+                const returnedItems = await tx.materialItem.findMany({
+                    where: { id: { in: itemIds } },
+                    select: { uniqueCode: true }
+                });
+
+                const uniqueCodes = returnedItems.map(i => i.uniqueCode).join(', ');
+
+                await tx.materialReturnRecord.create({
+                    data: {
+                        allocationId: allocationId,
+                        quantity: itemIds.length,
+                        returnDate: new Date(),
+                        remarks: remarks || 'Batch Return',
+                        itemUniqueCodes: uniqueCodes
+                    }
+                });
+            }
+        });
+
+        revalidatePath('/dashboard/allocate-material');
+        return { success: true };
+
+    } catch (error: any) {
+        console.error('Error in batch return:', error);
+        return { success: false, error: 'Failed to process batch return' };
+    }
+}

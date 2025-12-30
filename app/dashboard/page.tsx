@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Calendar, MapPin, Users, IndianRupee, Package, Zap } from 'lucide-react';
 import { getPendingPasswordRequests } from '@/app/admin-actions';
 import { PasswordRequestsAlert } from '@/components/PasswordRequestsAlert';
+import { getMaterialAllocations } from '@/app/allocation-actions';
+import { MaterialReportsClient } from '@/components/reports/MaterialReportsClient';
 
 export default async function DashboardPage() {
     const session = await getSession();
@@ -75,6 +77,57 @@ export default async function DashboardPage() {
 
     // Get real statistics for active event
     const eventReport = await getEventReport(session.activeEventId);
+
+    // START: Staff Dashboard Logic
+    if (session.roleName === 'Staff') {
+        const allocations = await getMaterialAllocations(session.activeEventId);
+
+        // Calculate financial summary for the report logic
+        const financialSummary = Object.values(allocations.reduce((acc: any, curr: any) => {
+            const exhId = curr.exhibitorId;
+            if (!acc[exhId]) {
+                acc[exhId] = {
+                    exhibitor: curr.exhibitor,
+                    totalItems: 0,
+                    totalCost: 0,
+                    allocations: []
+                };
+            }
+            acc[exhId].totalItems += curr.quantity;
+            acc[exhId].totalCost += curr.totalPrice;
+            acc[exhId].allocations.push(curr);
+            return acc;
+        }, {})).sort((a: any, b: any) => a.exhibitor.name.localeCompare(b.exhibitor.name));
+
+        const totalRevenue = allocations.reduce((sum, a) => sum + a.totalPrice, 0);
+
+        return (
+            <div>
+                <div className="mb-4">
+                    <h1 className="text-2xl font-bold text-gray-900 mb-1">
+                        Dashboard
+                    </h1>
+                    <p className="text-sm text-gray-600">
+                        Event: {session.activeEventName} | Staff: {session.name}
+                    </p>
+                </div>
+
+                <div className="bg-white rounded-lg shadow-sm p-6">
+                    <MaterialReportsClient
+                        allocations={allocations}
+                        financialSummary={financialSummary}
+                        eventName={session.activeEventName || 'Event'}
+                        totalRevenue={totalRevenue}
+                        showFinancials={false}
+                        allowExport={false}
+                        shortenItemIds={true}
+                    />
+                </div>
+            </div>
+        );
+    }
+    // END: Staff Dashboard Logic
+
     const stats: any = eventReport?.statistics || {
         totalSpaces: 0,
         bookedSpaces: 0,

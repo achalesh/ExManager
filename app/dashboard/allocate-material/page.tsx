@@ -25,6 +25,8 @@ export default async function AllocateMaterialPage() {
     const totalCost = allocations.reduce((sum, a) => sum + a.totalPrice, 0);
     const totalItems = allocations.reduce((sum, a) => sum + a.quantity, 0);
 
+    const isStaff = session.roleName === 'Staff';
+
     return (
         <div>
             <div className="mb-8">
@@ -36,7 +38,7 @@ export default async function AllocateMaterialPage() {
                 </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className={`grid grid-cols-1 md:grid-cols-${isStaff ? '2' : '3'} gap-6 mb-8`}>
                 <div className="bg-white rounded-lg shadow-sm p-6">
                     <div className="flex items-center justify-between">
                         <div>
@@ -65,19 +67,21 @@ export default async function AllocateMaterialPage() {
                     </div>
                 </div>
 
-                <div className="bg-white rounded-lg shadow-sm p-6">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-sm font-medium text-gray-600">Total Cost</p>
-                            <p className="text-3xl font-bold text-purple-600 mt-2">
-                                ₹{totalCost.toFixed(2)}
-                            </p>
-                        </div>
-                        <div className="bg-purple-100 rounded-lg p-3">
-                            <Package className="h-6 w-6 text-purple-600" />
+                {!isStaff && (
+                    <div className="bg-white rounded-lg shadow-sm p-6">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-medium text-gray-600">Total Cost</p>
+                                <p className="text-3xl font-bold text-purple-600 mt-2">
+                                    ₹{totalCost.toFixed(2)}
+                                </p>
+                            </div>
+                            <div className="bg-purple-100 rounded-lg p-3">
+                                <Package className="h-6 w-6 text-purple-600" />
+                            </div>
                         </div>
                     </div>
-                </div>
+                )}
             </div>
 
             <MaterialAllocationInterface
@@ -85,6 +89,7 @@ export default async function AllocateMaterialPage() {
                 allocations={allocations}
                 exhibitors={exhibitors}
                 eventId={session.activeEventId}
+                role={session.roleName}
             />
         </div>
     );

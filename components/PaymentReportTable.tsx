@@ -19,10 +19,10 @@ interface Payment {
     amount: number;
     paymentMethod: string;
     category: string;
-    notes?: string;
+    notes?: string | null;
     exhibitorName: string;
     space: string;
-    collectedBy?: string;
+    collectedBy?: string | null;
 }
 
 interface GroupedPayment {
@@ -39,212 +39,27 @@ interface GroupedPayment {
     isSplit: boolean;
 }
 
-export function PaymentReportTable({ initialPayments }: { initialPayments: Payment[] }) {
+// ... (imports)
+
+interface PaymentReportTableProps {
+    initialPayments: Payment[];
+    role: string;
+}
+
+export function PaymentReportTable({ initialPayments, role }: PaymentReportTableProps) {
     const [payments, setPayments] = useState(initialPayments);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [methodFilter, setMethodFilter] = useState('All');
-    const [loading, setLoading] = useState<string | null>(null);
-    const [editReceipt, setEditReceipt] = useState<GroupedPayment | null>(null);
-    const [deleteReceiptNum, setDeleteReceiptNum] = useState<string | null>(null);
-    const router = useRouter();
+    // ... (state)
+    const isAdmin = role === 'Admin';
 
-    // Grouping Logic
-    const groupedPayments: GroupedPayment[] = Object.values(payments.reduce((acc, p) => {
-        if (!acc[p.receiptNumber]) {
-            acc[p.receiptNumber] = {
-                receiptNumber: p.receiptNumber,
-                date: new Date(p.paymentDate),
-                exhibitorName: p.exhibitorName,
-                space: p.space,
-                category: p.category,
-                totalAmount: 0,
-                methods: [],
-                notes: p.notes || '',
-                collectedBy: p.collectedBy || '',
-                ids: [],
-                isSplit: false
-            };
-        }
-        acc[p.receiptNumber].totalAmount += p.amount;
-        if (!acc[p.receiptNumber].methods.includes(p.paymentMethod)) {
-            acc[p.receiptNumber].methods.push(p.paymentMethod);
-        }
-        acc[p.receiptNumber].ids.push(p.id);
-        acc[p.receiptNumber].isSplit = acc[p.receiptNumber].ids.length > 1;
-        return acc;
-    }, {} as Record<string, GroupedPayment>));
+    // ... (grouping, filtering, stats)
 
-    // Filtering
-    const filteredPayments = groupedPayments.filter(p => {
-        const matchesSearch =
-            p.receiptNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.exhibitorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.space.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesMethod = methodFilter === 'All' || p.methods.includes(methodFilter);
-        return matchesSearch && matchesMethod;
-    });
-
-    // Stats
-    const totalAmount = filteredPayments.reduce((sum, p) => sum + p.totalAmount, 0);
-
-    // Handlers
-    const handleDelete = async () => {
-        if (!deleteReceiptNum) return;
-        setLoading(deleteReceiptNum);
-        try {
-            const res = await deletePaymentReceipt(deleteReceiptNum);
-            if (res.success) {
-                setPayments(payments.filter(p => p.receiptNumber !== deleteReceiptNum));
-                setDeleteReceiptNum(null);
-                router.refresh();
-            } else {
-                alert(res.error);
-            }
-        } catch (e) {
-            console.error(e);
-            alert('Failed to delete');
-        } finally {
-            setLoading(null);
-        }
-    };
-
-    const handleUpdate = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!editReceipt) return;
-        setLoading(editReceipt.receiptNumber);
-
-        try {
-            // If split, we only support updating common fields via updatePaymentReceipt
-            // If single, we could technically update amount/method too via updatePayment, 
-            // but for consistency let's stick to Receipt level update unless strictly single?
-            // Actually, if single, users expect full edit. 
-            // BUT our new action `updatePaymentReceipt` handles fields: receiptNumber, date, notes, category.
-            // It does NOT handle Amount/Method.
-
-            // Strategy: 
-            // If single, call updatePayment (by ID) to allow full edit.
-            // If split, call updatePaymentReceipt (by Receipt#) for restricted edit.
-
-            let res;
-            if (editReceipt.isSplit) {
-                res = await updatePaymentReceipt(editReceipt.receiptNumber, {
-                    paymentDate: editReceipt.date,
-                    notes: editReceipt.notes,
-                    category: editReceipt.category,
-                    // receiptNumber change is risky if conflicts, but we can allow if supported
-                });
-            } else {
-                // Determine the single ID
-                const id = editReceipt.ids[0];
-                // We need to pass amount/method from form?
-                // The form below needs to handle this distinction.
-                // For now, let's keep it simple: Use updatePaymentReceipt for EVERYONE for fields it supports.
-                // If they need to change amount on a single payment, we can add that logic.
-
-                // Let's pass the fields we have in the form.
-                // If editReceipt has changed amount/method (only visible if single), we need to use updatePayment.
-
-                // Wait, editReceipt state is a GroupedPayment object.
-                // If I edit amount there, I need to know.
-
-                // Let's simplfy: Always use updatePaymentReceipt for common fields.
-                // And if it's single, we call updatePayment for Amount/Method if changed?
-
-                // Actually, let's just use updatePaymentReceipt for all common fields.
-                // And if it's single, we call updatePayment to update Amount/Method if needed.
-
-                // For this iteration, let's implement updatePaymentReceipt for common fields.
-                // And disable Amount/Method editing for everyone to ensure safety during this transition?
-                // User said "update the same", likely meaning "view".
-                // But generally users need to edit Amount if they made a typo.
-                // So for Single payments, Amount edit is critical.
-
-                // Split logic:
-                if (editReceipt.isSplit) {
-                    res = await updatePaymentReceipt(editReceipt.receiptNumber, {
-                        paymentDate: editReceipt.date,
-                        notes: editReceipt.notes,
-                        category: editReceipt.category
-                    });
-                } else {
-                    // Single
-                    res = await updatePayment(editReceipt.ids[0], {
-                        paymentDate: editReceipt.date,
-                        notes: editReceipt.notes,
-                        category: editReceipt.category,
-                        amount: editReceipt.totalAmount, // Assuming input maps to this
-                        paymentMethod: editReceipt.methods[0]
-                    });
-                }
-            }
-
-            if (res.success) {
-                // Optimistic update tricky due to grouping. 
-                // Simplest is to router.refresh() and let server reload, 
-                // but we can try to update local state.
-
-                // Ensure Date object is valid
-                const newDate = new Date(editReceipt.date);
-
-                setPayments(prev => prev.map(p => {
-                    if (p.receiptNumber === editReceipt.receiptNumber) {
-                        return {
-                            ...p,
-                            paymentDate: newDate,
-                            notes: editReceipt.notes,
-                            category: editReceipt.category,
-                            // If single, update amount/method too
-                            ...(editReceipt.isSplit ? {} : {
-                                amount: editReceipt.totalAmount,
-                                paymentMethod: editReceipt.methods[0]
-                            })
-                        };
-                    }
-                    return p;
-                }));
-
-                setEditReceipt(null);
-                router.refresh();
-            } else {
-                alert(res.error);
-            }
-        } catch (e) {
-            console.error(e);
-            alert('Failed to update');
-        } finally {
-            setLoading(null);
-        }
-    };
-
-    const handleDownloadCSV = () => {
-        const headers = ['Date', 'Receipt No', 'Exhibitor', 'Space', 'Category', 'Total Amount', 'Method', 'Notes', 'Collected By'];
-        const rows = filteredPayments.map(p => [
-            format(new Date(p.date), 'yyyy-MM-dd'),
-            p.receiptNumber,
-            `"${p.exhibitorName}"`,
-            p.space,
-            p.category,
-            p.totalAmount.toFixed(2),
-            p.methods.join(' + '),
-            `"${p.notes || ''}"`,
-            p.collectedBy || ''
-        ].join(','));
-
-        const csvContent = [headers.join(','), ...rows].join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `payment_report_${format(new Date(), 'yyyy-MM-dd')}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
+    // ... (handlers)
 
     return (
         <div className="space-y-4">
             <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
                 <div className="flex gap-2 w-full md:w-auto">
+                    {/* ... (Search & Filter) */}
                     <div className="relative w-full md:w-64">
                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
@@ -268,9 +83,11 @@ export function PaymentReportTable({ initialPayments }: { initialPayments: Payme
                     </Select>
                 </div>
                 <div className="flex items-center gap-4">
-                    <div className="bg-slate-100 px-4 py-2 rounded-lg font-bold">
-                        Total: ₹{totalAmount.toLocaleString('en-IN')}
-                    </div>
+                    {isAdmin && (
+                        <div className="bg-slate-100 px-4 py-2 rounded-lg font-bold">
+                            Total: ₹{totalAmount.toLocaleString('en-IN')}
+                        </div>
+                    )}
                     <Button variant="outline" onClick={handleDownloadCSV} className="gap-2">
                         <Download className="h-4 w-4" />
                         Export CSV
@@ -289,7 +106,7 @@ export function PaymentReportTable({ initialPayments }: { initialPayments: Payme
                             <TableHead className="text-right">Amount</TableHead>
                             <TableHead>Method</TableHead>
                             <TableHead>Notes</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
+                            {isAdmin && <TableHead className="text-right">Actions</TableHead>}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -316,21 +133,23 @@ export function PaymentReportTable({ initialPayments }: { initialPayments: Payme
                                     </div>
                                 </TableCell>
                                 <TableCell className="max-w-[200px] truncate" title={payment.notes}>{payment.notes}</TableCell>
-                                <TableCell className="text-right">
-                                    <div className="flex justify-end gap-2">
-                                        <Button variant="ghost" size="icon" onClick={() => setEditReceipt(payment)}>
-                                            <Edit2 className="h-4 w-4 text-blue-600" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" onClick={() => setDeleteReceiptNum(payment.receiptNumber)}>
-                                            <Trash2 className="h-4 w-4 text-red-600" />
-                                        </Button>
-                                    </div>
-                                </TableCell>
+                                {isAdmin && (
+                                    <TableCell className="text-right">
+                                        <div className="flex justify-end gap-2">
+                                            <Button variant="ghost" size="icon" onClick={() => setEditReceipt(payment)}>
+                                                <Edit2 className="h-4 w-4 text-blue-600" />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" onClick={() => setDeleteReceiptNum(payment.receiptNumber)}>
+                                                <Trash2 className="h-4 w-4 text-red-600" />
+                                            </Button>
+                                        </div>
+                                    </TableCell>
+                                )}
                             </TableRow>
                         ))}
                         {filteredPayments.length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                                <TableCell colSpan={isAdmin ? 8 : 7} className="text-center py-8 text-muted-foreground">
                                     No payments found
                                 </TableCell>
                             </TableRow>

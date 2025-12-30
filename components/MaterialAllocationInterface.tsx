@@ -22,8 +22,8 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Plus, Package, IndianRupee } from 'lucide-react';
-import { allocateMaterial, allocateScannedItems, allocateMaterialItems, deleteMaterialAllocation, updateMaterialAllocation, allocateBatchMaterials, deleteExhibitorMaterialAllocations, updateExhibitorMaterialBillNumber } from '@/app/allocation-actions';
-import { Scan, X, Trash2, Pencil, Printer } from 'lucide-react';
+import { allocateMaterial, allocateScannedItems, allocateMaterialItems, deleteMaterialAllocation, updateMaterialAllocation, allocateBatchMaterials, deleteExhibitorMaterialAllocations, updateExhibitorMaterialBillNumber, returnMaterial } from '@/app/allocation-actions';
+import { Scan, X, Trash2, Pencil, Printer, RotateCcw } from 'lucide-react';
 import { MaterialReceipt } from './MaterialReceipt';
 
 interface MaterialAllocationInterfaceProps {
@@ -31,9 +31,11 @@ interface MaterialAllocationInterfaceProps {
     allocations: any[];
     exhibitors: any[];
     eventId: number;
+    role?: string;
 }
 
-export function MaterialAllocationInterface({ materials, allocations, exhibitors, eventId }: MaterialAllocationInterfaceProps) {
+export function MaterialAllocationInterface({ materials, allocations, exhibitors, eventId, role }: MaterialAllocationInterfaceProps) {
+    const isStaff = role === 'Staff';
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -139,6 +141,39 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
             setScanMode(false); // Reset scan mode
         }
     }, [open]);
+
+    // Return Material State
+    const [returnOpen, setReturnOpen] = useState(false);
+    const [returnAllocation, setReturnAllocation] = useState<any>(null);
+    const [returnQuantity, setReturnQuantity] = useState(1);
+    const [returnSelectedItems, setReturnSelectedItems] = useState<number[]>([]);
+
+    const handleReturnClick = (allocation: any) => {
+        setReturnAllocation(allocation);
+        setReturnQuantity(1);
+        setReturnSelectedItems([]);
+        setReturnOpen(true);
+    };
+
+    const submitReturn = async () => {
+        if (!returnAllocation) return;
+
+        setLoading(true);
+        const res = await returnMaterial({
+            allocationId: returnAllocation.id,
+            returnQuantity: returnAllocation.items.length > 0 ? returnSelectedItems.length : returnQuantity,
+            itemIds: returnAllocation.items.length > 0 ? returnSelectedItems : undefined
+        });
+        setLoading(false);
+
+        if (res.success) {
+            setReturnOpen(false);
+            setReturnAllocation(null);
+            router.refresh();
+        } else {
+            alert(res.error);
+        }
+    };
 
 
     // Batch Allocation State
@@ -589,11 +624,13 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                                     Allocated Material Details
                                 </th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                                    Total Price
+                                    {isStaff ? 'Actions' : 'Total Price'}
                                 </th>
-                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                                    Actions
-                                </th>
+                                {!isStaff && (
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                                        Actions
+                                    </th>
+                                )}
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -649,6 +686,11 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                                                             {allocation.isFOC && (
                                                                 <span className="ml-2 bg-green-100 text-green-800 text-xs px-1.5 py-0.5 rounded">FOC</span>
                                                             )}
+                                                            {allocation.returnedCount > 0 && (
+                                                                <span className="ml-2 bg-orange-100 text-orange-800 text-xs px-1.5 py-0.5 rounded">
+                                                                    Returned: {allocation.returnedCount}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         {allocation.items && allocation.items.length > 0 && (
                                                             <div className="text-xs text-blue-600 mt-0.5">
@@ -662,47 +704,61 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                                                         )}
                                                     </div>
                                                     <div className="flex items-center gap-2 pl-4">
-                                                        <span className="text-gray-600 font-medium whitespace-nowrap">
-                                                            ₹{allocation.totalPrice.toFixed(2)}
-                                                        </span>
-                                                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600"
-                                                                onClick={() => handleEdit(allocation)}
-                                                                title="Edit Item"
-                                                            >
-                                                                <Pencil className="h-3 w-3" />
-                                                            </Button>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className="h-6 w-6 p-0 text-gray-400 hover:text-red-600"
-                                                                onClick={async () => {
-                                                                    if (confirm(`Delete ${allocation.quantity} x ${allocation.material.name}?`)) {
-                                                                        const res = await deleteMaterialAllocation(allocation.id);
-                                                                        if (!res.success) alert(res.error);
-                                                                    }
-                                                                }}
-                                                                title="Delete Item"
-                                                            >
-                                                                <Trash2 className="h-3 w-3" />
-                                                            </Button>
-                                                        </div>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className={`h-6 w-6 p-0 text-gray-400 hover:text-orange-600 ${allocation.returnedCount >= allocation.quantity ? 'opacity-20 cursor-not-allowed' : ''}`}
+                                                            onClick={() => allocation.returnedCount < allocation.quantity && handleReturnClick(allocation)}
+                                                            title="Return Item"
+                                                            disabled={allocation.returnedCount >= allocation.quantity}
+                                                        >
+                                                            <RotateCcw className="h-3 w-3" />
+                                                        </Button>
+                                                        {!isStaff && (
+                                                            <span className="text-gray-600 font-medium whitespace-nowrap">
+                                                                ₹{allocation.totalPrice.toFixed(2)}
+                                                            </span>
+                                                        )}
+                                                        {!isStaff && (
+                                                            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600"
+                                                                    onClick={() => handleEdit(allocation)}
+                                                                    title="Edit Item"
+                                                                >
+                                                                    <Pencil className="h-3 w-3" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-6 w-6 p-0 text-gray-400 hover:text-red-600"
+                                                                    onClick={async () => {
+                                                                        if (confirm(`Delete ${allocation.quantity} x ${allocation.material.name}?`)) {
+                                                                            const res = await deleteMaterialAllocation(allocation.id);
+                                                                            if (!res.success) alert(res.error);
+                                                                        }
+                                                                    }}
+                                                                    title="Delete Item"
+                                                                >
+                                                                    <Trash2 className="h-3 w-3" />
+                                                                </Button>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-right whitespace-nowrap">
-                                        <div className="text-base font-bold text-gray-900">
-                                            <IndianRupee className="h-4 w-4 inline mr-0.5" />
-                                            {group.totalPrice.toFixed(2)}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-right whitespace-nowrap">
-                                        <div className="flex flex-col gap-2 items-end">
+                                        {!isStaff && (
+                                            <div className="text-base font-bold text-gray-900">
+                                                <IndianRupee className="h-4 w-4 inline mr-0.5" />
+                                                {group.totalPrice.toFixed(2)}
+                                            </div>
+                                        )}
+                                        {isStaff && (
                                             <Button
                                                 variant="outline"
                                                 size="sm"
@@ -710,36 +766,54 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                                                     setReceiptData(group.items);
                                                     setShowReceipt(true);
                                                 }}
-                                                className="text-xs w-full"
+                                                className="text-xs"
                                             >
                                                 <Printer className="h-3 w-3 mr-1" />
                                                 Print Bill
                                             </Button>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => handleBulkEdit(group)}
-                                                className="text-xs w-full text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
-                                            >
-                                                <Pencil className="h-3 w-3 mr-1" />
-                                                Edit Bill No
-                                            </Button>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={async () => {
-                                                    if (confirm(`Are you sure you want to delete ALL material allocations for ${group.exhibitor.name}? This cannot be undone.`)) {
-                                                        const res = await deleteExhibitorMaterialAllocations(group.exhibitor.id, eventId);
-                                                        if (!res.success) alert(res.error);
-                                                    }
-                                                }}
-                                                className="text-xs w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                                            >
-                                                <Trash2 className="h-3 w-3 mr-1" />
-                                                Delete All
-                                            </Button>
-                                        </div>
+                                        )}
                                     </td>
+                                    {!isStaff && (
+                                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                                            <div className="flex flex-col gap-2 items-end">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setReceiptData(group.items);
+                                                        setShowReceipt(true);
+                                                    }}
+                                                    className="text-xs w-full"
+                                                >
+                                                    <Printer className="h-3 w-3 mr-1" />
+                                                    Print Bill
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => handleBulkEdit(group)}
+                                                    className="text-xs w-full text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                                                >
+                                                    <Pencil className="h-3 w-3 mr-1" />
+                                                    Edit Bill No
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={async () => {
+                                                        if (confirm(`Are you sure you want to delete ALL material allocations for ${group.exhibitor.name}? This cannot be undone.`)) {
+                                                            const res = await deleteExhibitorMaterialAllocations(group.exhibitor.id, eventId);
+                                                            if (!res.success) alert(res.error);
+                                                        }
+                                                    }}
+                                                    className="text-xs w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                                >
+                                                    <Trash2 className="h-3 w-3 mr-1" />
+                                                    Delete All
+                                                </Button>
+                                            </div>
+                                        </td>
+                                    )}
                                 </tr>
                             ))}
                         </tbody>
@@ -771,6 +845,68 @@ export function MaterialAllocationInterface({ materials, allocations, exhibitors
                     </div>
                     <DialogFooter>
                         <Button onClick={submitBulkEdit}>Update All</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Return Dialog */}
+            <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Return Material</DialogTitle>
+                        <DialogDescription>
+                            Process return for {returnAllocation?.material.name}.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        {returnAllocation && returnAllocation.items && returnAllocation.items.length > 0 ? (
+                            <div className="space-y-2">
+                                <Label>Select Items to Return:</Label>
+                                <div className="border rounded-md p-2 max-h-48 overflow-y-auto space-y-2">
+                                    {returnAllocation.items.map((item: any) => (
+                                        <div key={item.id} className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                id={`ret-${item.id}`}
+                                                checked={returnSelectedItems.includes(item.id)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setReturnSelectedItems([...returnSelectedItems, item.id]);
+                                                    } else {
+                                                        setReturnSelectedItems(returnSelectedItems.filter(id => id !== item.id));
+                                                    }
+                                                }}
+                                                className="h-4 w-4 text-blue-600 rounded"
+                                            />
+                                            <Label htmlFor={`ret-${item.id}`} className="text-sm font-normal">
+                                                {item.uniqueCode}
+                                            </Label>
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-gray-500 text-right">Selected: {returnSelectedItems.length}</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                <Label>Quantity to Return:</Label>
+                                <Input
+                                    type="number"
+                                    min={1}
+                                    max={returnAllocation ? (returnAllocation.quantity - returnAllocation.returnedCount) : 1}
+                                    value={returnQuantity}
+                                    onChange={(e) => setReturnQuantity(parseInt(e.target.value) || 0)}
+                                />
+                                <p className="text-xs text-gray-500">
+                                    Allocated: {returnAllocation?.quantity} | Returned: {returnAllocation?.returnedCount}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setReturnOpen(false)}>Cancel</Button>
+                        <Button onClick={submitReturn} disabled={loading || (returnAllocation?.items.length > 0 && returnSelectedItems.length === 0)}>
+                            {loading ? 'Processing...' : 'Confirm Return'}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
