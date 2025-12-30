@@ -48,7 +48,9 @@ interface PaymentReportTableProps {
 
 export function PaymentReportTable({ initialPayments, role }: PaymentReportTableProps) {
     const [payments, setPayments] = useState(initialPayments);
-    // ... (state)
+    const [searchTerm, setSearchTerm] = useState('');
+    const [methodFilter, setMethodFilter] = useState('All');
+    const [dateFilter, setDateFilter] = useState<Date | undefined>(undefined);
     const isAdmin = role === 'Admin';
 
     // ... (grouping, filtering, stats)
