@@ -159,7 +159,14 @@ export async function deletePaymentReceipt(receiptNumber: string) {
     }
 }
 
-export async function updatePaymentReceipt(currentReceiptNumber: string, data: { receiptNumber?: string, paymentDate?: Date | string, notes?: string, category?: string }) {
+export async function updatePaymentReceipt(data: {
+    receiptNumber: string,
+    date?: Date | string,
+    notes?: string,
+    category?: string,
+    amount?: number,       // Added for singular updates
+    paymentMethod?: string // Added for singular updates
+}) {
     const session = await getSession();
     if (!session || !['Admin', 'Manager', 'Accountant'].includes(session.roleName)) {
         return { success: false, error: 'Unauthorized' };
@@ -168,7 +175,8 @@ export async function updatePaymentReceipt(currentReceiptNumber: string, data: {
     // Role Enforcement
     if (session.roleName !== 'Admin') {
         // Manager & Accounts -> Approval for Update
-        return await createApprovalRequest('UPDATE', 'Payment', currentReceiptNumber, data, `${session.roleName} requested receipt update`);
+        // Use receiptNumber as key
+        return await createApprovalRequest('UPDATE', 'Payment', data.receiptNumber, data, `${session.roleName} requested receipt update`);
     }
 
     try {
@@ -178,14 +186,15 @@ export async function updatePaymentReceipt(currentReceiptNumber: string, data: {
             collectedBy: (session.name || 'Admin') + ' (Edit)',
         };
 
-        if (data.receiptNumber) updateData.receiptNumber = data.receiptNumber;
-        if (data.paymentDate) updateData.paymentDate = new Date(data.paymentDate);
+        if (data.date) updateData.paymentDate = new Date(data.date);
+        if (data.amount) updateData.amount = data.amount;
+        if (data.paymentMethod) updateData.paymentMethod = data.paymentMethod;
 
         // Find exhibitor first for revalidation
-        const payment = await prisma.payment.findFirst({ where: { receiptNumber: currentReceiptNumber } });
+        const payment = await prisma.payment.findFirst({ where: { receiptNumber: data.receiptNumber } });
 
         await prisma.payment.updateMany({
-            where: { receiptNumber: currentReceiptNumber },
+            where: { receiptNumber: data.receiptNumber },
             data: updateData
         });
 
