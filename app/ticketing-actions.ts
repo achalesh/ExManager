@@ -12,6 +12,8 @@ const ticketTypeSchema = z.object({
     category: z.enum(['Entrance', 'Amusement']),
     name: z.string().min(2),
     price: z.coerce.number().min(0),
+    amusementOwnerId: z.coerce.number().optional(),
+    ownerSharePercentage: z.coerce.number().optional(),
 });
 
 const ticketBatchSchema = z.object({
@@ -47,6 +49,8 @@ export async function createTicketType(data: z.infer<typeof ticketTypeSchema>) {
                 category: parsed.category,
                 name: parsed.name,
                 price: parsed.price,
+                amusementOwnerId: parsed.amusementOwnerId || null,
+                ownerSharePercentage: parsed.ownerSharePercentage || 0,
             },
         });
         revalidatePath('/dashboard/ticketing');
@@ -70,7 +74,9 @@ export async function updateTicketType(id: number, data: Partial<z.infer<typeof 
             data: {
                 name: data.name,
                 price: data.price,
-                category: data.category
+                category: data.category,
+                amusementOwnerId: data.amusementOwnerId || null,
+                ownerSharePercentage: data.ownerSharePercentage || 0
             }
         });
         revalidatePath('/dashboard/settings/tickets');

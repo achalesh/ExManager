@@ -321,6 +321,18 @@ model ShedAllocation {
 }
 
 // Ticketing Models
+
+
+model AmusementOwner {
+  id            Int          @id @default(autoincrement())
+  name          String
+  address       String       @default("")
+  contactNumber String       @default("")
+  ticketTypes   TicketType[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
 model TicketType {
   id        Int           @id @default(autoincrement())
   eventId   Int
@@ -328,6 +340,11 @@ model TicketType {
   category  String        // "Entrance" or "Amusement"
   name      String        // e.g. "Adult Entry", "Ferris Wheel"
   price     Float
+  
+  amusementOwnerId Int?
+  amusementOwner   AmusementOwner? @relation(fields: [amusementOwnerId], references: [id])
+  ownerSharePercentage Float @default(0.0)
+
   batches   TicketBatch[]
   saleItems TicketSaleItem[]
   staffAssignments StaffTicketAssignment[] // Added relation

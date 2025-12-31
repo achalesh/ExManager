@@ -87,6 +87,7 @@ export function DashboardNav({ session }: DashboardNavProps) {
         { href: '/dashboard/ticketing/staff', label: 'Ticket Allocation', icon: Users, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/settings/tickets', label: 'Configuration', icon: Settings, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/settings/inventory', label: 'Stock Registry', icon: Package, roles: ['Admin', 'Manager'] },
+        { href: '/dashboard/amusement-owners', label: 'Amusement Owners', icon: Users, roles: ['Admin', 'Manager'] },
     ];
 
     const reportItems = [
@@ -98,6 +99,7 @@ export function DashboardNav({ session }: DashboardNavProps) {
         { href: '/dashboard/reports/payments', label: 'Payment Report', icon: IndianRupee, roles: ['Admin', 'Manager', 'Accounts'] },
         { href: '/dashboard/reports/ticketing', label: 'Sales Overview', icon: BarChart3, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/reports/sales', label: 'Sold Ticket Details', icon: Receipt, roles: ['Admin', 'Manager', 'Accountant'] },
+        { href: '/dashboard/reports/revenue-share', label: 'Revenue Share', icon: IndianRupee, roles: ['Admin', 'Manager', 'Accountant'] },
     ];
 
     const settingsItems = [
