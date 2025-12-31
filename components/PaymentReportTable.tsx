@@ -184,6 +184,27 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
         }
     };
 
+    const handleDelete = async () => {
+        if (!deleteReceiptNum) return;
+        setLoading(true);
+
+        try {
+            const res = await deletePaymentReceipt(deleteReceiptNum);
+            if (res.success) {
+                setDeleteReceiptNum(null);
+                setPayments(prev => prev.filter(p => p.receiptNumber !== deleteReceiptNum));
+                router.refresh();
+            } else {
+                alert('Delete failed: ' + (('error' in res) ? res.error : 'Unknown error'));
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Delete failed');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="space-y-4">
             <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
@@ -385,8 +406,8 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
                     </DialogHeader>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDeleteReceiptNum(null)}>Cancel</Button>
-                        <Button variant="destructive" onClick={handleDelete} disabled={loading === deleteReceiptNum}>
-                            {loading === deleteReceiptNum && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
+                        <Button variant="destructive" onClick={handleDelete} disabled={loading}>
+                            {loading && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
                             Delete
                         </Button>
                     </DialogFooter>
