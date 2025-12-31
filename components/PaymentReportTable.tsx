@@ -363,8 +363,8 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
                             </div>
                             <DialogFooter>
                                 <Button type="button" variant="outline" onClick={() => setEditReceipt(null)}>Cancel</Button>
-                                <Button type="submit" disabled={loading === editReceipt.receiptNumber}>
-                                    {loading === editReceipt.receiptNumber && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
+                                <Button type="submit" disabled={loading}>
+                                    {loading && <Loader2 className="animate-spin mr-2 h-4 w-4" />}
                                     Save Changes
                                 </Button>
                             </DialogFooter>
