@@ -46,6 +46,7 @@ model TicketInventory {
   price         Float    @default(0.0) // Added field
   category      String   @default("General") // Added field
   staffAssignments StaffTicketAssignment[]
+  batches       TicketBatch[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
@@ -356,6 +357,8 @@ model TicketBatch {
   id            Int         @id @default(autoincrement())
   ticketTypeId  Int
   ticketType    TicketType  @relation(fields: [ticketTypeId], references: [id])
+  inventoryId   Int?        // Link to source stock
+  inventory     TicketInventory? @relation(fields: [inventoryId], references: [id])
   startNumber   Int
   endNumber     Int
   currentNumber Int         // The next number to be sold

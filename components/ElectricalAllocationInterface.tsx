@@ -166,7 +166,6 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                             router.refresh();
                             return;
                         } else {
-                            setError(result.error || 'Failed');
                             setLoading(false);
                             return;
                         }
@@ -201,6 +200,11 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
             setLoading(false);
         }
     }
+
+    // Filter existing allocations for the selected exhibitor (outside the edit mode usually, but useful there too)
+    const exhibitorCurrentAllocations = formData.exhibitorId
+        ? allocations.filter(a => a.exhibitorId === formData.exhibitorId)
+        : [];
 
     return (
         <div>
@@ -241,6 +245,26 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                                         </SelectContent>
                                     </Select>
                                 </div>
+
+                                {/* Show Existing Allocations */}
+                                {exhibitorCurrentAllocations.length > 0 && (
+                                    <div className="bg-blue-50 border border-blue-100 rounded-md p-3 text-sm">
+                                        <div className="font-semibold text-blue-800 mb-2 flex items-center justify-between">
+                                            <span>Existing Allocations</span>
+                                            <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">
+                                                Total: ₹{exhibitorCurrentAllocations.reduce((sum, item) => sum + item.totalPrice, 0).toFixed(2)}
+                                            </span>
+                                        </div>
+                                        <div className="max-h-32 overflow-y-auto space-y-1">
+                                            {exhibitorCurrentAllocations.map(item => (
+                                                <div key={item.id} className="flex justify-between text-blue-700">
+                                                    <span>{item.electricalItem.name} x {item.quantity}</span>
+                                                    <span>₹{item.totalPrice}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                                     <div className="md:col-span-2">
@@ -345,177 +369,179 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                 </Dialog>
             </div>
 
-            {allocations.length === 0 ? (
-                <div className="bg-white rounded-lg shadow-sm p-12 text-center">
-                    <Zap className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No allocations yet</h3>
-                    <p className="text-gray-600">
-                        Start allocating electrical items to exhibitors
-                    </p>
-                </div>
-            ) : (
-                <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-1/4">
-                                    Exhibitor
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-1/2">
-                                    Allocated Items
-                                </th>
-                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                                    Total Price
-                                </th>
-                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {Object.values(allocations.reduce((acc: any, curr: any) => {
-                                const exhId = curr.exhibitorId;
-                                if (!acc[exhId]) {
-                                    acc[exhId] = {
-                                        exhibitor: curr.exhibitor,
-                                        items: [],
-                                        totalPrice: 0,
-                                        latestDate: curr.createdAt
-                                    };
-                                }
-                                acc[exhId].items.push(curr);
-                                acc[exhId].totalPrice += curr.totalPrice;
-                                if (new Date(curr.createdAt) > new Date(acc[exhId].latestDate)) {
-                                    acc[exhId].latestDate = curr.createdAt;
-                                }
-                                return acc;
-                            }, {})).map((group: any) => (
-                                <tr key={group.exhibitor.id} className="hover:bg-gray-50 align-top">
-                                    <td className="px-6 py-4">
-                                        <div className="text-sm font-medium text-gray-900">
-                                            {group.exhibitor.name}
-                                            {(() => {
-                                                const bills = Array.from(new Set(group.items.map((i: any) => i.billNumber).filter(Boolean)));
-                                                return bills.length > 0 ? (
-                                                    <span className="ml-2 text-green-600 text-xs font-semibold">
-                                                        (Bill: {bills.join(', ')})
-                                                    </span>
-                                                ) : null;
-                                            })()}
-                                        </div>
-                                        {group.exhibitor.faciaName && (
-                                            <div className="text-xs text-gray-600 font-medium">
-                                                ({group.exhibitor.faciaName})
-                                            </div>
-                                        )}
-                                        <div className="text-xs text-gray-500 mt-1">
-                                            Last Updated: {new Date(group.latestDate).toLocaleDateString('en-GB')}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="space-y-3">
-                                            {group.items.map((allocation: any) => (
-                                                <div key={allocation.id} className="group flex items-start justify-between text-sm border-b border-gray-100 pb-2 last:border-0 last:pb-0">
-                                                    <div>
-                                                        <div className="font-medium text-gray-900">
-                                                            {allocation.electricalItem.name}
-                                                            <span className="ml-2 text-gray-500 font-normal">
-                                                                (Qty: {allocation.quantity})
-                                                            </span>
-                                                        </div>
-                                                        <div className="text-xs text-gray-500">
-                                                            {allocation.electricalItem.wattage}W each
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 pl-4">
-                                                        <div className="text-orange-600 font-semibold text-xs flex items-center">
-                                                            <Zap className="h-3 w-3 mr-0.5" />
-                                                            {allocation.totalWattage}W
-                                                        </div>
-                                                        <span className="text-gray-600 font-medium whitespace-nowrap ml-2">
-                                                            ₹{allocation.totalPrice.toFixed(2)}
-                                                        </span>
-                                                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600 ml-2"
-                                                                onClick={() => handleEdit(allocation)}
-                                                                title="Edit Item"
-                                                            >
-                                                                <Pencil className="h-3 w-3" />
-                                                            </Button>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className="h-6 w-6 p-0 text-gray-400 hover:text-red-600 ml-1"
-                                                                onClick={async () => {
-                                                                    if (confirm(`Delete ${allocation.quantity} x ${allocation.electricalItem.name}?`)) {
-                                                                        const res = await deleteElectricalAllocation(allocation.id);
-                                                                        if (!res.success) alert(res.error);
-                                                                    }
-                                                                }}
-                                                                title="Delete Item"
-                                                            >
-                                                                <Trash2 className="h-3 w-3" />
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-right whitespace-nowrap">
-                                        <div className="text-base font-bold text-gray-900">
-                                            <IndianRupee className="h-4 w-4 inline mr-0.5" />
-                                            {group.totalPrice.toFixed(2)}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-right whitespace-nowrap">
-                                        <div className="flex flex-col gap-2 items-end">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => {
-                                                    setReceiptData(group.items);
-                                                    setShowReceipt(true);
-                                                }}
-                                                className="text-xs w-full"
-                                            >
-                                                <Printer className="h-3 w-3 mr-1" />
-                                                Print Bill
-                                            </Button>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => handleBulkEdit(group)}
-                                                className="text-xs w-full text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
-                                            >
-                                                <Pencil className="h-3 w-3 mr-1" />
-                                                Edit Bill No
-                                            </Button>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={async () => {
-                                                    if (confirm(`Are you sure you want to delete ALL electrical allocations for ${group.exhibitor.name}? This cannot be undone.`)) {
-                                                        const res = await deleteExhibitorElectricalAllocations(group.exhibitor.id, eventId);
-                                                        if (!res.success) alert(res.error);
-                                                    }
-                                                }}
-                                                className="text-xs w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                                            >
-                                                <Trash2 className="h-3 w-3 mr-1" />
-                                                Delete All
-                                            </Button>
-                                        </div>
-                                    </td>
+            {
+                allocations.length === 0 ? (
+                    <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+                        <Zap className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">No allocations yet</h3>
+                        <p className="text-gray-600">
+                            Start allocating electrical items to exhibitors
+                        </p>
+                    </div>
+                ) : (
+                    <div className="bg-white rounded-lg shadow-sm overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                                <tr>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-1/4">
+                                        Exhibitor
+                                    </th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase w-1/2">
+                                        Allocated Items
+                                    </th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                                        Total Price
+                                    </th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                                        Actions
+                                    </th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                                {Object.values(allocations.reduce((acc: any, curr: any) => {
+                                    const exhId = curr.exhibitorId;
+                                    if (!acc[exhId]) {
+                                        acc[exhId] = {
+                                            exhibitor: curr.exhibitor,
+                                            items: [],
+                                            totalPrice: 0,
+                                            latestDate: curr.createdAt
+                                        };
+                                    }
+                                    acc[exhId].items.push(curr);
+                                    acc[exhId].totalPrice += curr.totalPrice;
+                                    if (new Date(curr.createdAt) > new Date(acc[exhId].latestDate)) {
+                                        acc[exhId].latestDate = curr.createdAt;
+                                    }
+                                    return acc;
+                                }, {})).map((group: any) => (
+                                    <tr key={group.exhibitor.id} className="hover:bg-gray-50 align-top">
+                                        <td className="px-6 py-4">
+                                            <div className="text-sm font-medium text-gray-900">
+                                                {group.exhibitor.name}
+                                                {(() => {
+                                                    const bills = Array.from(new Set(group.items.map((i: any) => i.billNumber).filter(Boolean)));
+                                                    return bills.length > 0 ? (
+                                                        <span className="ml-2 text-green-600 text-xs font-semibold">
+                                                            (Bill: {bills.join(', ')})
+                                                        </span>
+                                                    ) : null;
+                                                })()}
+                                            </div>
+                                            {group.exhibitor.faciaName && (
+                                                <div className="text-xs text-gray-600 font-medium">
+                                                    ({group.exhibitor.faciaName})
+                                                </div>
+                                            )}
+                                            <div className="text-xs text-gray-500 mt-1">
+                                                Last Updated: {new Date(group.latestDate).toLocaleDateString('en-GB')}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="space-y-3">
+                                                {group.items.map((allocation: any) => (
+                                                    <div key={allocation.id} className="group flex items-start justify-between text-sm border-b border-gray-100 pb-2 last:border-0 last:pb-0">
+                                                        <div>
+                                                            <div className="font-medium text-gray-900">
+                                                                {allocation.electricalItem.name}
+                                                                <span className="ml-2 text-gray-500 font-normal">
+                                                                    (Qty: {allocation.quantity})
+                                                                </span>
+                                                            </div>
+                                                            <div className="text-xs text-gray-500">
+                                                                {allocation.electricalItem.wattage}W each
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 pl-4">
+                                                            <div className="text-orange-600 font-semibold text-xs flex items-center">
+                                                                <Zap className="h-3 w-3 mr-0.5" />
+                                                                {allocation.totalWattage}W
+                                                            </div>
+                                                            <span className="text-gray-600 font-medium whitespace-nowrap ml-2">
+                                                                ₹{allocation.totalPrice.toFixed(2)}
+                                                            </span>
+                                                            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600 ml-2"
+                                                                    onClick={() => handleEdit(allocation)}
+                                                                    title="Edit Item"
+                                                                >
+                                                                    <Pencil className="h-3 w-3" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-6 w-6 p-0 text-gray-400 hover:text-red-600 ml-1"
+                                                                    onClick={async () => {
+                                                                        if (confirm(`Delete ${allocation.quantity} x ${allocation.electricalItem.name}?`)) {
+                                                                            const res = await deleteElectricalAllocation(allocation.id);
+                                                                            if (!res.success) alert(res.error);
+                                                                        }
+                                                                    }}
+                                                                    title="Delete Item"
+                                                                >
+                                                                    <Trash2 className="h-3 w-3" />
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                                            <div className="text-base font-bold text-gray-900">
+                                                <IndianRupee className="h-4 w-4 inline mr-0.5" />
+                                                {group.totalPrice.toFixed(2)}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right whitespace-nowrap">
+                                            <div className="flex flex-col gap-2 items-end">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setReceiptData(group.items);
+                                                        setShowReceipt(true);
+                                                    }}
+                                                    className="text-xs w-full"
+                                                >
+                                                    <Printer className="h-3 w-3 mr-1" />
+                                                    Print Bill
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => handleBulkEdit(group)}
+                                                    className="text-xs w-full text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                                                >
+                                                    <Pencil className="h-3 w-3 mr-1" />
+                                                    Edit Bill No
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={async () => {
+                                                        if (confirm(`Are you sure you want to delete ALL electrical allocations for ${group.exhibitor.name}? This cannot be undone.`)) {
+                                                            const res = await deleteExhibitorElectricalAllocations(group.exhibitor.id, eventId);
+                                                            if (!res.success) alert(res.error);
+                                                        }
+                                                    }}
+                                                    className="text-xs w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                                >
+                                                    <Trash2 className="h-3 w-3 mr-1" />
+                                                    Delete All
+                                                </Button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )
+            }
 
             <Dialog open={isBulkEditDialogOpen} onOpenChange={setIsBulkEditDialogOpen}>
                 <DialogContent className="sm:max-w-[425px]">
@@ -550,6 +576,6 @@ export function ElectricalAllocationInterface({ items, allocations, exhibitors, 
                 onOpenChange={setShowReceipt}
                 allocations={receiptData}
             />
-        </div>
+        </div >
     );
 }

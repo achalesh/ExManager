@@ -22,7 +22,8 @@ import {
     Briefcase,
     Receipt,
     IndianRupee,
-    RotateCcw
+    RotateCcw,
+    ArrowRightLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -84,7 +85,7 @@ export function DashboardNav({ session }: DashboardNavProps) {
 
     const ticketingItems = [
         { href: '/dashboard/ticketing', label: 'Ticket Counter', icon: Ticket, roles: ['Admin', 'Manager'] },
-        { href: '/dashboard/ticketing/staff', label: 'Ticket Allocation', icon: Users, roles: ['Admin', 'Manager'] },
+        { href: '/dashboard/ticketing/staff', label: 'Allocations', icon: ArrowRightLeft, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/settings/tickets', label: 'Configuration', icon: Settings, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/settings/inventory', label: 'Stock Registry', icon: Package, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/amusement-owners', label: 'Amusement Owners', icon: Users, roles: ['Admin', 'Manager'] },
@@ -229,14 +230,55 @@ export function DashboardNav({ session }: DashboardNavProps) {
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                    {filteredTicketing.map(item => (
-                                        <DropdownMenuItem key={item.href} asChild>
-                                            <Link href={item.href} className="flex items-center gap-2">
-                                                <item.icon className="h-4 w-4" />
-                                                {item.label}
+                                    {/* Ticketing Section - Reorganized */}
+                                    <DropdownMenuItem asChild>
+                                        <Button
+                                            variant={pathname.startsWith('/dashboard/ticketing/items') ? "secondary" : "ghost"}
+                                            className="w-full justify-start"
+                                            asChild
+                                        >
+                                            <Link href="/dashboard/ticketing/items">
+                                                <Ticket className="mr-2 h-4 w-4" />
+                                                Ticket Items
                                             </Link>
-                                        </DropdownMenuItem>
-                                    ))}
+                                        </Button>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                        <Button
+                                            variant={pathname.startsWith('/dashboard/ticketing/stock') ? "secondary" : "ghost"}
+                                            className="w-full justify-start"
+                                            asChild
+                                        >
+                                            <Link href="/dashboard/ticketing/stock">
+                                                <Package className="mr-2 h-4 w-4" />
+                                                Ticket Stock
+                                            </Link>
+                                        </Button>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                        <Button
+                                            variant={pathname.startsWith('/dashboard/ticketing/staff') ? "secondary" : "ghost"}
+                                            className="w-full justify-start"
+                                            asChild
+                                        >
+                                            <Link href="/dashboard/ticketing/staff">
+                                                <ArrowRightLeft className="mr-2 h-4 w-4" />
+                                                Allocations
+                                            </Link>
+                                        </Button>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild>
+                                        <Button
+                                            variant={pathname.startsWith('/dashboard/amusement-owners') ? "secondary" : "ghost"}
+                                            className="w-full justify-start"
+                                            asChild
+                                        >
+                                            <Link href="/dashboard/amusement-owners">
+                                                <Users className="mr-2 h-4 w-4" />
+                                                Amusement Owners
+                                            </Link>
+                                        </Button>
+                                    </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         )}

@@ -117,6 +117,7 @@ export async function getTicketTypes(eventId: number) {
     return await prisma.ticketType.findMany({
         where: { eventId },
         include: {
+            amusementOwner: true,
             batches: {
                 where: { isActive: true },
                 orderBy: { createdAt: 'desc' },
@@ -129,78 +130,59 @@ export async function getTicketTypes(eventId: number) {
 
 // --- Ticket Batches ---
 
-export async function createTicketBatch(data: z.infer<typeof ticketBatchSchema>) {
+const assignStockSchema = z.object({
+    ticketTypeId: z.coerce.number(),
+    inventoryId: z.coerce.number(),
+    quantity: z.coerce.number().min(1)
+});
+
+export async function assignTicketStock(data: z.infer<typeof assignStockSchema>) {
     const session = await getSession();
     if (!session || !['Admin', 'Manager'].includes(session.roleName)) {
         return { success: false, error: 'Unauthorized' };
     }
 
     try {
-        const parsed = ticketBatchSchema.parse(data);
+        const parsed = assignStockSchema.parse(data);
 
-        // Deactivate previous
-        await prisma.ticketBatch.updateMany({
-            where: { ticketTypeId: parsed.ticketTypeId, isActive: true },
-            data: { isActive: false }
-        });
+        return await prisma.$transaction(async (tx) => {
+            // 1. Fetch Inventory Source
+            const inventory = await tx.ticketInventory.findUnique({
+                where: { id: parsed.inventoryId }
+            });
+            if (!inventory) throw new Error('Inventory source not found');
 
-        let startNumber, endNumber;
+            // 2. Fetch Ticket Type Target
+            const ticketType = await tx.ticketType.findUnique({
+                where: { id: parsed.ticketTypeId }
+            });
+            if (!ticketType) throw new Error('Ticket Item not found');
 
-        if (parsed.mode === 'inventory') {
-            if (!parsed.inventoryId || !parsed.quantity) {
-                return { success: false, error: 'Inventory and quantity required' };
-            }
+            // 3. Validation
+            if (inventory.status !== 'Available') throw new Error('Stock is not available');
+            const available = inventory.endNumber - inventory.currentNumber + 1;
+            if (parsed.quantity > available) throw new Error(`Insufficient stock. Available: ${available}`);
 
-            const result = await prisma.$transaction(async (tx) => {
-                const inventory = await tx.ticketInventory.findUnique({
-                    where: { id: parsed.inventoryId }
-                });
+            // Optional: Strict Price/Category Match?
+            // User might want to assign 50rs stock to 50rs item. Warning if mismatch?
+            // For now, allow mix if Admin decides, but usually it should match.
 
-                if (!inventory) throw new Error('Inventory not found');
+            // 4. Calculate Range
+            const startNumber = inventory.currentNumber;
+            const endNumber = startNumber + parsed.quantity - 1;
 
-                const available = inventory.endNumber - inventory.currentNumber + 1;
-                if (parsed.quantity! > available) {
-                    throw new Error(`Insufficient stock. Available: ${available}`);
-                }
-
-                startNumber = inventory.currentNumber;
-                endNumber = startNumber + parsed.quantity! - 1;
-
-                // Update inventory
-                await tx.ticketInventory.update({
-                    where: { id: inventory.id },
-                    data: { currentNumber: endNumber + 1 }
-                });
-
-                const batch = await tx.ticketBatch.create({
-                    data: {
-                        ticketTypeId: parsed.ticketTypeId,
-                        startNumber,
-                        endNumber,
-                        currentNumber: startNumber,
-                        isActive: true
-                    }
-                });
-
-                return batch;
+            // 5. Deactivate previous batches for this Item?
+            // Usually we only have 1 active batch per item for counter sales.
+            await tx.ticketBatch.updateMany({
+                where: { ticketTypeId: parsed.ticketTypeId, isActive: true },
+                data: { isActive: false }
             });
 
-            revalidatePath('/dashboard/ticketing');
-            revalidatePath('/dashboard/settings/tickets');
-            return { success: true, batch: result };
-
-        } else {
-            // Manual Mode
-            if (!parsed.startNumber || !parsed.endNumber) {
-                return { success: false, error: 'Start and End numbers required for manual mode' };
-            }
-
-            startNumber = parsed.startNumber;
-            endNumber = parsed.endNumber;
-
-            const batch = await prisma.ticketBatch.create({
+            // 6. Create Batch
+            const batch = await tx.ticketBatch.create({
                 data: {
                     ticketTypeId: parsed.ticketTypeId,
+                    inventoryId: parsed.inventoryId,
                     startNumber,
                     endNumber,
                     currentNumber: startNumber,
@@ -208,13 +190,21 @@ export async function createTicketBatch(data: z.infer<typeof ticketBatchSchema>)
                 }
             });
 
-            revalidatePath('/dashboard/ticketing');
-            revalidatePath('/dashboard/settings/tickets');
+            // 7. Update Inventory
+            await tx.ticketInventory.update({
+                where: { id: inventory.id },
+                data: {
+                    currentNumber: endNumber + 1,
+                    status: (endNumber === inventory.endNumber) ? 'Exhausted' : 'Available'
+                }
+            });
+
             return { success: true, batch };
-        }
+        });
+
     } catch (error: any) {
-        console.error('Error creating ticket batch:', error);
-        return { success: false, error: error.message || 'Failed to create ticket batch' };
+        console.error('Error assigning stock:', error);
+        return { success: false, error: error.message || 'Failed to assign stock' };
     }
 }
 
@@ -682,4 +672,167 @@ export async function getDetailedSalesReport(eventId: number, dateFilter?: strin
             totalItems: rows.length
         }
     };
+}
+
+const staffAssignmentSchema = z.object({
+    staffId: z.coerce.number(),
+    ticketTypeId: z.coerce.number(),
+    inventoryId: z.coerce.number(),
+    quantity: z.coerce.number().min(1),
+});
+
+export async function assignTicketsToStaff(data: z.infer<typeof staffAssignmentSchema>) {
+    const session = await getSession();
+    if (!session || !['Admin', 'Manager'].includes(session.roleName)) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const parsed = staffAssignmentSchema.parse(data);
+
+        return await prisma.$transaction(async (tx) => {
+            const inventory = await tx.ticketInventory.findUnique({ where: { id: parsed.inventoryId } });
+            if (!inventory || inventory.status !== 'Available') throw new Error('Stock unavailable');
+
+            const available = inventory.endNumber - inventory.currentNumber + 1;
+            if (parsed.quantity > available) throw new Error(`Insufficient stock. Available: ${available}`);
+
+            const startNumber = inventory.currentNumber;
+            const endNumber = startNumber + parsed.quantity - 1;
+
+            const assignment = await tx.staffTicketAssignment.create({
+                data: {
+                    staffId: parsed.staffId,
+                    ticketTypeId: parsed.ticketTypeId,
+                    ticketInventoryId: parsed.inventoryId,
+                    seriesLabel: inventory.seriesLabel,
+                    startNumber,
+                    endNumber,
+                    assignedCount: parsed.quantity,
+                    status: 'Assigned'
+                }
+            });
+
+            await tx.ticketInventory.update({
+                where: { id: inventory.id },
+                data: {
+                    currentNumber: endNumber + 1,
+                    status: (endNumber === inventory.endNumber) ? 'Exhausted' : 'Available'
+                }
+            });
+
+            return { success: true, assignment };
+        });
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+const settlementSchema = z.object({
+    assignmentId: z.coerce.number(),
+    returnedCount: z.coerce.number().min(0),
+    cashReceived: z.coerce.number().min(0),
+    upiReceived: z.coerce.number().min(0).optional().default(0),
+});
+
+export async function settleStaffAssignment(data: z.infer<typeof settlementSchema>) {
+    const session = await getSession();
+    if (!session || !['Admin', 'Manager'].includes(session.roleName)) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const parsed = settlementSchema.parse(data);
+
+        await prisma.$transaction(async (tx) => {
+            const assignment = await tx.staffTicketAssignment.findUnique({
+                where: { id: parsed.assignmentId },
+                include: { ticketType: true }
+            });
+            if (!assignment) throw new Error('Assignment not found');
+            if (assignment.status === 'Returned') throw new Error('Already settled');
+
+            const soldCount = assignment.assignedCount - parsed.returnedCount;
+            const expectedAmount = soldCount * assignment.ticketType.price;
+
+            // Just record whatever they give. Discrepancies are allowed (shortage/excess).
+
+            await tx.staffTicketAssignment.update({
+                where: { id: parsed.assignmentId },
+                data: {
+                    status: 'Returned',
+                    returnDate: new Date(),
+                    returnedCount: parsed.returnedCount,
+                    soldCount,
+                    totalAmount: expectedAmount,
+                    cashReceived: parsed.cashReceived,
+                    upiReceived: parsed.upiReceived || 0
+                }
+            });
+        });
+
+        revalidatePath('/dashboard/ticketing/staff');
+        return { success: true };
+    } catch (error: any) {
+        console.error('Settlement error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function getStaffAssignments(eventId: number) {
+    // Return active and recent assignments
+    return await prisma.staffTicketAssignment.findMany({
+        where: { staff: { eventId } },
+        include: {
+            staff: true,
+            ticketType: true,
+            ticketInventory: true
+        },
+        orderBy: { assignedDate: 'desc' }
+    });
+}
+
+export async function undoStaffAssignment(assignmentId: number) {
+    const session = await getSession();
+    if (!session || !['Admin', 'Manager'].includes(session.roleName)) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        return await prisma.$transaction(async (tx) => {
+            const assignment = await tx.staffTicketAssignment.findUnique({
+                where: { id: assignmentId },
+                include: { ticketInventory: true }
+            });
+
+            if (!assignment) throw new Error('Assignment not found');
+            if (assignment.status !== 'Assigned') throw new Error('Cannot undo settled assignments.');
+
+            const inventory = assignment.ticketInventory;
+            if (!inventory) throw new Error('Inventory record missing.');
+
+            // Check if this was the LATEST assignment from this inventory
+            // Inventory currentNumber should be exactly (endNumber + 1)
+            // Example: Assigned 1-10. End=10. Inv Current=11.
+            if (inventory.currentNumber !== assignment.endNumber + 1) {
+                throw new Error('Cannot undo: Subsequent assignments exist from this stock bundle. Please use Settlement instead.');
+            }
+
+            // Restore Inventory
+            await tx.ticketInventory.update({
+                where: { id: inventory.id },
+                data: {
+                    currentNumber: assignment.startNumber,
+                    status: 'Available' // Ensure it's available if it was Exhausted
+                }
+            });
+
+            // Delete Assignment
+            await tx.staffTicketAssignment.delete({ where: { id: assignmentId } });
+
+            return { success: true };
+        });
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
 }
