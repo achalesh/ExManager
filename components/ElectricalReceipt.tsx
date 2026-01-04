@@ -24,7 +24,13 @@ export function ElectricalReceipt({ open, onOpenChange, allocations }: Electrica
     const date = new Date().toLocaleString();
     const grandTotal = allocations.reduce((sum, a) => sum + (a.totalPrice || 0), 0);
 
-    const [receiptNumber, setReceiptNumber] = React.useState(allocations[0]?.billNumber || '');
+    const [receiptNumber, setReceiptNumber] = React.useState('');
+
+    React.useEffect(() => {
+        if (allocations && allocations.length > 0) {
+            setReceiptNumber(allocations[0]?.billNumber || '');
+        }
+    }, [allocations, open]);
 
     const handlePrint = () => {
         window.print();

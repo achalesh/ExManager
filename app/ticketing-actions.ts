@@ -9,11 +9,21 @@ import { getSession } from '@/lib/auth';
 
 const ticketTypeSchema = z.object({
     eventId: z.coerce.number(),
-    category: z.enum(['Entrance', 'Amusement']),
+    category: z.enum(['Entrance', 'Amusement', 'Office']),
     name: z.string().min(2),
     price: z.coerce.number().min(0),
-    amusementOwnerId: z.coerce.number().optional(),
+    // Deprecated single owner fields, keeping for backward compatibility in Zod but logic will change
+    amusementOwnerId: z.coerce.number().optional().nullable(),
     ownerSharePercentage: z.coerce.number().optional(),
+
+    // New Multi-Owner Support
+    ownerShares: z.array(z.object({
+        amusementOwnerId: z.coerce.number(),
+        sharePercentage: z.coerce.number()
+    })).optional(),
+
+    // UPI Machine Assignment
+    upiMachineId: z.coerce.number().optional().nullable(),
 });
 
 const ticketBatchSchema = z.object({
@@ -43,14 +53,37 @@ export async function createTicketType(data: z.infer<typeof ticketTypeSchema>) {
 
     try {
         const parsed = ticketTypeSchema.parse(data);
+
+        // Handle Legacy + New Mixed Logic
+        // If ownerShares is provided, use it.
+        // If not, but amusementOwnerId is provided (legacy UI), construct one share.
+
+        let sharesToCreate = parsed.ownerShares || [];
+        if (sharesToCreate.length === 0 && parsed.amusementOwnerId) {
+            sharesToCreate.push({
+                amusementOwnerId: parsed.amusementOwnerId,
+                sharePercentage: parsed.ownerSharePercentage || 0
+            });
+        }
+
         const ticketType = await prisma.ticketType.create({
             data: {
                 eventId: parsed.eventId,
                 category: parsed.category,
                 name: parsed.name,
                 price: parsed.price,
-                amusementOwnerId: parsed.amusementOwnerId || null,
-                ownerSharePercentage: parsed.ownerSharePercentage || 0,
+                // Keep keeping the main field populated with the FIRST owner for easy legacy query fallback
+                amusementOwnerId: sharesToCreate.length > 0 ? sharesToCreate[0].amusementOwnerId : null,
+                ownerSharePercentage: sharesToCreate.length > 0 ? sharesToCreate[0].sharePercentage : 0,
+
+                upiMachineId: parsed.upiMachineId || null,
+
+                ownerShares: {
+                    create: sharesToCreate.map(s => ({
+                        amusementOwnerId: s.amusementOwnerId,
+                        sharePercentage: s.sharePercentage
+                    }))
+                }
             },
         });
         revalidatePath('/dashboard/ticketing');
@@ -69,19 +102,52 @@ export async function updateTicketType(id: number, data: Partial<z.infer<typeof 
     }
 
     try {
-        await prisma.ticketType.update({
-            where: { id },
-            data: {
-                name: data.name,
-                price: data.price,
-                category: data.category,
-                amusementOwnerId: data.amusementOwnerId || null,
-                ownerSharePercentage: data.ownerSharePercentage || 0
+        // Construct shares similar to create
+        let sharesToUpdate = data.ownerShares || [];
+
+        // If pure legacy update (sending only amusementOwnerId and no ownerShares array)
+        if ((!data.ownerShares || data.ownerShares.length === 0) && data.amusementOwnerId) {
+            sharesToUpdate.push({
+                amusementOwnerId: data.amusementOwnerId,
+                sharePercentage: data.ownerSharePercentage || 0
+            });
+        }
+
+        await prisma.$transaction(async (tx) => {
+            // 1. Update basic fields
+            await tx.ticketType.update({
+                where: { id },
+                data: {
+                    name: data.name,
+                    price: data.price,
+                    category: data.category,
+                    // Update legacy fields with the first share if exists, else null
+                    amusementOwnerId: sharesToUpdate.length > 0 ? sharesToUpdate[0].amusementOwnerId : null,
+                    ownerSharePercentage: sharesToUpdate.length > 0 ? sharesToUpdate[0].sharePercentage : 0,
+                    upiMachineId: data.upiMachineId || null
+                }
+            });
+
+            // 2. Sync Shares (Delete all and recreate is simplest)
+            await tx.ticketOwnerShare.deleteMany({
+                where: { ticketTypeId: id }
+            });
+
+            if (sharesToUpdate.length > 0) {
+                await tx.ticketOwnerShare.createMany({
+                    data: sharesToUpdate.map(s => ({
+                        ticketTypeId: id,
+                        amusementOwnerId: s.amusementOwnerId,
+                        sharePercentage: s.sharePercentage
+                    }))
+                });
             }
         });
+
         revalidatePath('/dashboard/settings/tickets');
         return { success: true };
     } catch (error) {
+        console.error('Update Ticket Error', error);
         return { success: false, error: 'Failed to update ticket type' };
     }
 }
@@ -100,7 +166,7 @@ export async function deleteTicketType(id: number) {
         const hasAssignments = await prisma.staffTicketAssignment.findFirst({ where: { ticketTypeId: id } });
         if (hasAssignments) return { success: false, error: 'Cannot delete: Staff assignments exist.' };
 
-        // Delete active batches and the type itself
+        // Delete active batches and the type itself. Cascade handles TicketOwnerShare.
         await prisma.$transaction([
             prisma.ticketBatch.deleteMany({ where: { ticketTypeId: id } }),
             prisma.ticketType.delete({ where: { id } })
@@ -117,11 +183,15 @@ export async function getTicketTypes(eventId: number) {
     return await prisma.ticketType.findMany({
         where: { eventId },
         include: {
-            amusementOwner: true,
+            amusementOwner: true, // Keep for legacy UIs for now
+            ownerShares: {
+                include: { amusementOwner: true }
+            },
+            upiMachine: true,
             batches: {
                 where: { isActive: true },
                 orderBy: { createdAt: 'desc' },
-                take: 1 // Get only the latest active batch for display logic usually
+                take: 1
             }
         },
         orderBy: { category: 'asc' }
@@ -679,6 +749,8 @@ const staffAssignmentSchema = z.object({
     ticketTypeId: z.coerce.number(),
     inventoryId: z.coerce.number(),
     quantity: z.coerce.number().min(1),
+    assignedDate: z.string().optional(), // ISO String
+    assignedUpiMachineId: z.coerce.number().optional()
 });
 
 export async function assignTicketsToStaff(data: z.infer<typeof staffAssignmentSchema>) {
@@ -700,6 +772,20 @@ export async function assignTicketsToStaff(data: z.infer<typeof staffAssignmentS
             const startNumber = inventory.currentNumber;
             const endNumber = startNumber + parsed.quantity - 1;
 
+            const ticketType = await tx.ticketType.findUnique({ where: { id: parsed.ticketTypeId } });
+            if (!ticketType) throw new Error('Ticket Type not found');
+
+            // Determine UPI Machine
+            // Priority: Manual Override -> Ticket Type Default -> Null
+            let finalMachineId = parsed.assignedUpiMachineId;
+            if (!finalMachineId) {
+                finalMachineId = ticketType.upiMachineId || undefined;
+            }
+
+            // Determine Date
+            const assignedDate = parsed.assignedDate ? new Date(parsed.assignedDate) : new Date();
+
+            // @ts-ignore
             const assignment = await tx.staffTicketAssignment.create({
                 data: {
                     staffId: parsed.staffId,
@@ -709,7 +795,9 @@ export async function assignTicketsToStaff(data: z.infer<typeof staffAssignmentS
                     startNumber,
                     endNumber,
                     assignedCount: parsed.quantity,
-                    status: 'Assigned'
+                    status: 'Assigned',
+                    assignedUpiMachineId: finalMachineId,
+                    assignedDate: assignedDate
                 }
             });
 
@@ -733,6 +821,7 @@ const settlementSchema = z.object({
     returnedCount: z.coerce.number().min(0),
     cashReceived: z.coerce.number().min(0),
     upiReceived: z.coerce.number().min(0).optional().default(0),
+    returnDate: z.string().optional() // ISO String
 });
 
 export async function settleStaffAssignment(data: z.infer<typeof settlementSchema>) {
@@ -747,21 +836,95 @@ export async function settleStaffAssignment(data: z.infer<typeof settlementSchem
         await prisma.$transaction(async (tx) => {
             const assignment = await tx.staffTicketAssignment.findUnique({
                 where: { id: parsed.assignmentId },
-                include: { ticketType: true }
+                include: {
+                    ticketType: {
+                        include: {
+                            ownerShares: true, // Fetch shares to split revenue
+                            upiMachine: true // Fetch assigned machine
+                        }
+                    }
+                }
             });
             if (!assignment) throw new Error('Assignment not found');
             if (assignment.status === 'Returned') throw new Error('Already settled');
 
+            const settleDate = parsed.returnDate ? new Date(parsed.returnDate) : new Date();
+
             const soldCount = assignment.assignedCount - parsed.returnedCount;
             const expectedAmount = soldCount * assignment.ticketType.price;
 
-            // Just record whatever they give. Discrepancies are allowed (shortage/excess).
+            // --- Profit Sharing Logic ---
+            const ownerShares = assignment.ticketType.ownerShares || [];
+            let totalOwnerShareAmount = 0;
+            const upiMachine = assignment.ticketType.upiMachine;
+            const isOwnerMaintainedMachine = upiMachine && !upiMachine.isCompanyOwned;
+
+            // 1. Create Ledger Entries for Owners
+            if (ownerShares.length > 0 && soldCount > 0) {
+                for (const share of ownerShares) {
+                    const shareAmount = (expectedAmount * share.sharePercentage) / 100;
+                    totalOwnerShareAmount += shareAmount;
+
+                    // Determine if THIS owner collected the money (via their UPI machine)
+                    // If the machine belongs to this owner, they collected the FULL sales amount
+                    let collectedByThisOwner = 0;
+                    if (isOwnerMaintainedMachine && upiMachine.amusementOwnerId === share.amusementOwnerId) {
+                        collectedByThisOwner = expectedAmount;
+                    }
+
+                    await tx.amusementLedger.create({
+                        data: {
+                            date: settleDate,
+                            amusementOwnerId: share.amusementOwnerId,
+                            ticketTypeId: assignment.ticketTypeId,
+                            details: `${assignment.ticketType.name} - ${soldCount} tickets`,
+                            soldCount: soldCount,
+                            totalSales: expectedAmount,
+                            ownerSharePercentage: share.sharePercentage,
+                            ownerShareAmount: shareAmount,
+                            companyShareAmount: expectedAmount - shareAmount,
+                            collectedByOwner: collectedByThisOwner,
+                            settledAssignmentId: assignment.id,
+                            status: 'Pending'
+                        }
+                    });
+                }
+            }
+
+            // 2. Day Book Entry for Company Share
+            // If an Owner collected the money, the Company did NOT receive cash/bank deposit yet.
+            // So we DO NOT create an Income Transaction in the Day Book to avoid inflating Cash Balance.
+            // The "Asset" is now "Receivable from Owner", tracked in AmusementLedger.
+
+            if (!isOwnerMaintainedMachine) {
+                const companyShare = expectedAmount - totalOwnerShareAmount;
+
+                // Format Description: "Torra Torra Rs.100 x Sold ticket count - balance percentage ie.70%"
+                const companyPercentage = expectedAmount > 0
+                    ? (companyShare / expectedAmount) * 100
+                    : 100;
+
+                await tx.transaction.create({
+                    data: {
+                        eventId: assignment.ticketType.eventId,
+                        amount: companyShare,
+                        type: 'Income',
+                        category: 'Revenue Share', // Or 'Ticket Sales'
+                        description: `${assignment.ticketType.name} - ${soldCount} tkts x ${assignment.ticketType.price} - Co. Share ${companyPercentage.toFixed(1)}%`,
+                        paymentMethod: 'Cash', // Assumption for settlement
+                        transactionDate: settleDate,
+                        recordedBy: session.username
+                    }
+                });
+            }
+
+            // --- End Profit Sharing ---
 
             await tx.staffTicketAssignment.update({
                 where: { id: parsed.assignmentId },
                 data: {
                     status: 'Returned',
-                    returnDate: new Date(),
+                    returnDate: settleDate,
                     returnedCount: parsed.returnedCount,
                     soldCount,
                     totalAmount: expectedAmount,

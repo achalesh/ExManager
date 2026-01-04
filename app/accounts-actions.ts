@@ -62,7 +62,7 @@ export async function addTransaction(formData: FormData) {
 
 export async function getDailyTransactions(dateString?: string) {
     const session = await getSession();
-    if (!session || !session.activeEventId) return { transactions: [], summary: { income: 0, expense: 0, balance: 0 } };
+    if (!session || !session.activeEventId) return { transactions: [], summary: { income: 0, expense: 0, balance: 0, cashIncome: 0, cashExpense: 0, upiIncome: 0, upiExpense: 0, cashBalance: 0, companyBalance: 0, upiAmusement: 0, upiEntrance: 0, upiOffice: 0 } };
 
     const targetDate = dateString ? new Date(dateString) : new Date();
     // Start and End of the day
@@ -218,33 +218,70 @@ export async function getDailyTransactions(dateString?: string) {
             return acc;
         }, { income: 0, expense: 0, cash: 0, upi: 0 });
 
-        // Accurate Recalculation from Source Arrays for precision
-        let totalCash = 0;
-        let totalUpi = 0;
+        // Accurate Recalculation from Source Arrays
+        let cashIncome = 0;
+        let upiIncome = 0;
+        let cashExpense = 0;
+        let upiExpense = 0;
 
         // 1. Manual
         manualTransactions.forEach((t: any) => {
             if (t.type === 'Income') {
-                if (t.paymentMethod === 'Cash') totalCash += t.amount;
-                else totalUpi += t.amount; // Simplification, assumption
+                if (t.paymentMethod === 'Cash') cashIncome += t.amount;
+                else upiIncome += t.amount;
+            } else {
+                // Expense
+                if (t.paymentMethod === 'Cash') cashExpense += t.amount;
+                else upiExpense += t.amount;
             }
         });
 
-        // 2. Payments
+        // 2. Payments (Always Income)
         payments.forEach((p: any) => {
-            if (p.paymentMethod === 'Cash') totalCash += p.amount;
-            else totalUpi += p.amount;
+            if (p.paymentMethod === 'Cash') cashIncome += p.amount;
+            else upiIncome += p.amount;
         });
 
-        // 3. Counter Sales (Always Cash)
+        // 3. Counter Sales (Always Cash Income)
         counterSales.forEach((s: any) => {
-            totalCash += s.totalAmount;
+            cashIncome += s.totalAmount;
         });
 
-        // 4. Settlements (Explicit Fields)
+        // 4. Settlements (Explicit Fields - Income)
         settlements.forEach((s: any) => {
-            totalCash += (s.cashReceived || 0);
-            totalUpi += (s.upiReceived || 0);
+            cashIncome += (s.cashReceived || 0);
+            upiIncome += (s.upiReceived || 0);
+        });
+
+        // 5. UPI Breakdown Calculation
+        let upiAmusement = 0;
+        let upiEntrance = 0;
+        let upiOffice = 0;
+
+        // From Settlements (Staff Ticket Sales)
+        settlements.forEach((s: any) => {
+            const upiVal = s.upiReceived || 0;
+            if (upiVal > 0) {
+                const cat = (s.ticketType.category || '').toLowerCase();
+                if (cat === 'amusement') upiAmusement += upiVal;
+                else if (cat === 'entrance') upiEntrance += upiVal;
+                else if (cat === 'office') upiOffice += upiVal;
+            }
+        });
+
+        // From Manual Transactions (Income + UPI/Online + Category Match)
+        manualTransactions.forEach((t: any) => {
+            if (t.type === 'Income') {
+                const method = (t.paymentMethod || '').toLowerCase();
+                const isUpi = method.includes('upi') || method.includes('online') || method.includes('gpay') || method.includes('phonepe');
+
+                if (isUpi) {
+                    const cat = (t.category || '').toLowerCase();
+                    if (cat.includes('amusement')) upiAmusement += t.amount;
+                    else if (cat.includes('entrance') || cat.includes('ticket')) upiEntrance += t.amount; // Assuming 'Ticket' often implies Gate/Entrance if not specified
+                    else if (cat.includes('office') || cat.includes('general')) upiOffice += t.amount;
+                }
+            }
         });
 
         return {
@@ -253,14 +290,21 @@ export async function getDailyTransactions(dateString?: string) {
                 income: summary.income,
                 expense: summary.expense,
                 balance: summary.income - summary.expense,
-                cash: totalCash,
-                upi: totalUpi
+                cashIncome,
+                cashExpense,
+                upiIncome,
+                upiExpense,
+                cashBalance: cashIncome - cashExpense, // Cash in Hand
+                companyBalance: upiIncome - upiExpense, // Bank Balance increase
+                upiAmusement,
+                upiEntrance,
+                upiOffice
             }
         };
 
     } catch (error) {
         console.error("Error fetching daily transactions:", error);
-        return { transactions: [], summary: { income: 0, expense: 0, balance: 0 } };
+        return { transactions: [], summary: { income: 0, expense: 0, balance: 0, cashIncome: 0, cashExpense: 0, upiIncome: 0, upiExpense: 0, cashBalance: 0, companyBalance: 0, upiAmusement: 0, upiEntrance: 0, upiOffice: 0 } };
     }
 }
 

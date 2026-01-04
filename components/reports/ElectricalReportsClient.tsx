@@ -138,6 +138,7 @@ export function ElectricalReportsClient({
                         <thead className="bg-gray-50">
                             <tr>
                                 <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase border-r w-1/4">Exhibitor</th>
+                                <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase border-r w-1/6">Space</th>
                                 <th className="px-4 py-3 text-left font-bold text-gray-700 uppercase border-r w-1/4">Item</th>
                                 <th className="px-4 py-3 text-center font-bold text-gray-700 uppercase border-r">Qty</th>
                                 <th className="px-4 py-3 text-right font-bold text-gray-700 uppercase">Cost</th>
@@ -149,17 +150,17 @@ export function ElectricalReportsClient({
                                     {item.allocations.map((alloc: any, idx: number) => (
                                         <tr key={alloc.id} className="hover:bg-gray-50">
                                             {idx === 0 && (
-                                                <td className="px-4 py-2 border-r align-top bg-gray-50/30" rowSpan={item.allocations.length}>
-                                                    <div className="font-bold text-gray-900">{item.exhibitor.name}</div>
-                                                    {item.exhibitor.faciaName && (
-                                                        <div className="text-xs text-blue-600 font-medium">Facia: {item.exhibitor.faciaName}</div>
-                                                    )}
-                                                    {item.exhibitor.bookings?.[0] && (
-                                                        <div className="text-xs text-gray-500 mt-1">
-                                                            Space: <span className="font-medium text-gray-700">{item.exhibitor.bookings[0].space.label}</span>
-                                                        </div>
-                                                    )}
-                                                </td>
+                                                <>
+                                                    <td className="px-4 py-2 border-r align-top bg-gray-50/30" rowSpan={item.allocations.length}>
+                                                        <div className="font-bold text-gray-900">{item.exhibitor.name}</div>
+                                                        {item.exhibitor.faciaName && (
+                                                            <div className="text-xs text-blue-600 font-medium">Facia: {item.exhibitor.faciaName}</div>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-2 border-r align-top bg-gray-50/30" rowSpan={item.allocations.length}>
+                                                        {item.exhibitor.bookings?.[0]?.space?.label || <span className="text-gray-400 italic">N/A</span>}
+                                                    </td>
+                                                </>
                                             )}
                                             <td className="px-4 py-2 border-r align-top">
                                                 {alloc.electricalItem.name}

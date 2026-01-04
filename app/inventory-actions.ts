@@ -125,6 +125,8 @@ export async function addInventory(data: {
             currentStart = chunkEnd + 1;
         }
 
+        console.log(`Adding Inventory: ${data.startNumber}-${data.endNumber} (${data.endNumber - data.startNumber + 1} tickets). Created ${chunks.length} chunks.`);
+
         await prisma.$transaction(
             chunks.map(chunk =>
                 prisma.ticketInventory.create({

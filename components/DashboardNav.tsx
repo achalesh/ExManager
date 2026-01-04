@@ -23,7 +23,8 @@ import {
     Receipt,
     IndianRupee,
     RotateCcw,
-    ArrowRightLeft
+    ArrowRightLeft,
+    FileText
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -101,6 +102,8 @@ export function DashboardNav({ session }: DashboardNavProps) {
         { href: '/dashboard/reports/ticketing', label: 'Sales Overview', icon: BarChart3, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/reports/sales', label: 'Sold Ticket Details', icon: Receipt, roles: ['Admin', 'Manager', 'Accountant'] },
         { href: '/dashboard/reports/revenue-share', label: 'Revenue Share', icon: IndianRupee, roles: ['Admin', 'Manager', 'Accountant'] },
+        { href: '/dashboard/reports/amusement-ledger', label: 'Amusement Ledger (Daily)', icon: Receipt, roles: ['Admin', 'Manager', 'Accountant'] },
+        { href: '/dashboard/reports/reconciliation', label: 'UPI Reconciliation', icon: FileText, roles: ['Admin', 'Accountant'] },
     ];
 
     const settingsItems = [
@@ -108,6 +111,7 @@ export function DashboardNav({ session }: DashboardNavProps) {
         { href: '/dashboard/settings/materials', label: 'Materials' },
         { href: '/dashboard/settings/electrical', label: 'Electrical Items' },
         { href: '/dashboard/settings/sheds', label: 'Sheds' },
+        { href: '/dashboard/settings/machines', label: 'UPI Machines' },
     ];
 
     const adminItems = [

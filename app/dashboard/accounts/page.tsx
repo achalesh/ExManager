@@ -38,7 +38,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
             </div>
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <Card className="bg-green-50 border-green-100">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium text-green-700">Total Income</CardTitle>
@@ -62,16 +62,34 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                         <p className="text-xs text-red-600">for {new Date(date).toLocaleDateString()}</p>
                     </CardContent>
                 </Card>
+                <Card className="bg-purple-50 border-purple-100">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-purple-700">Company Account (UPI)</CardTitle>
+                        <Wallet className="h-4 w-4 text-purple-600" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className={`text-2xl font-bold ${summary.companyBalance < 0 ? 'text-red-700' : 'text-purple-700'}`}>
+                            ₹{summary.companyBalance.toFixed(2)}
+                        </div>
+                        <div className="flex flex-col gap-1 mt-2 text-xs text-purple-600 border-t border-purple-200 pt-2">
+                            <div className="flex justify-between"><span>Amusement:</span> <span className="font-semibold">₹{(summary.upiAmusement || 0).toFixed(2)}</span></div>
+                            <div className="flex justify-between"><span>Entrance:</span> <span className="font-semibold">₹{(summary.upiEntrance || 0).toFixed(2)}</span></div>
+                            <div className="flex justify-between"><span>Office:</span> <span className="font-semibold">₹{(summary.upiOffice || 0).toFixed(2)}</span></div>
+                        </div>
+                    </CardContent>
+                </Card>
                 <Card className="bg-blue-50 border-blue-100">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-blue-700">Net Balance</CardTitle>
+                        <CardTitle className="text-sm font-medium text-blue-700">Cash in Hand</CardTitle>
                         <Wallet className="h-4 w-4 text-blue-600" />
                     </CardHeader>
                     <CardContent>
-                        <div className={`text-2xl font-bold ${summary.balance < 0 ? 'text-red-700' : 'text-blue-700'}`}>
-                            ₹{summary.balance.toFixed(2)}
+                        <div className={`text-2xl font-bold ${summary.cashBalance < 0 ? 'text-red-700' : 'text-blue-700'}`}>
+                            ₹{summary.cashBalance.toFixed(2)}
                         </div>
-                        <p className="text-xs text-blue-600">Cash in Hand (Today)</p>
+                        <p className="text-xs text-blue-600 mt-1">
+                            Opening + Cash Income - Cash Expense
+                        </p>
                     </CardContent>
                 </Card>
             </div>

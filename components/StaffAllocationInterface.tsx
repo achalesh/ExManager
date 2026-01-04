@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
     Table,
@@ -29,8 +29,9 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { assignTicketsToStaff, settleStaffAssignment, undoStaffAssignment, assignTicketStock } from '@/app/ticketing-actions';
+import { getUPIMachines } from '@/app/upi-actions';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, IndianRupee, Users, Trash, ArrowRightLeft } from 'lucide-react';
+import { AlertCircle, IndianRupee, Users, Trash, ArrowRightLeft, Plus, Calendar, Download } from 'lucide-react';
 
 interface TicketType {
     id: number;
@@ -108,6 +109,17 @@ export function StaffAllocationInterface({
     const [openAssignBatch, setOpenAssignBatch] = useState(false);
     const [loadingBatch, setLoadingBatch] = useState(false);
 
+    // Backdating & UPI Override State
+    const [upiMachines, setUpiMachines] = useState<any[]>([]);
+
+    // Load UPI Machines on mount
+    // Load UPI Machines on mount
+    useEffect(() => {
+        getUPIMachines().then(res => {
+            if (res.success && res.data) setUpiMachines(res.data);
+        });
+    }, []);
+
     const handleAssignBatchClick = (item: TicketType) => {
         setSelectedItemForBatch(item);
         setOpenAssignBatch(true);
@@ -161,7 +173,9 @@ export function StaffAllocationInterface({
             staffId: Number(formData.get('staffId')),
             ticketTypeId: Number(formData.get('ticketTypeId')),
             inventoryId: Number(formData.get('inventoryId')),
-            quantity: Number(formData.get('quantity'))
+            quantity: Number(formData.get('quantity')),
+            assignedDate: formData.get('assignedDate') as string,
+            assignedUpiMachineId: formData.get('assignedUpiMachineId') ? Number(formData.get('assignedUpiMachineId')) : undefined
         });
 
         if (res.success) {
@@ -190,7 +204,8 @@ export function StaffAllocationInterface({
             assignmentId: selectedAssignment.id,
             returnedCount: Number(formData.get('returnedCount')),
             cashReceived: Number(formData.get('cashReceived')),
-            upiReceived: Number(formData.get('upiReceived'))
+            upiReceived: Number(formData.get('upiReceived')),
+            returnDate: formData.get('returnDate') as string
         });
 
         if (res.success) {
@@ -222,6 +237,53 @@ export function StaffAllocationInterface({
     const compatibleStock = currentTicketType
         ? inventory.filter(inv => inv.status === 'Available' && inv.category === currentTicketType.category && inv.price === currentTicketType.price)
         : [];
+
+    const handleExportSettlements = () => {
+        if (pastAssignments.length === 0) return;
+        const headers = ['Staff Name', 'Item', 'Returned Date', 'Sold Count', 'Assigned Count', 'Total Amount', 'Status'];
+        const csvContent = [
+            headers.join(','),
+            ...pastAssignments.map(a => [
+                `"${a.staff.name}"`,
+                `"${a.ticketType.name}"`,
+                a.returnDate ? new Date(a.returnDate).toLocaleDateString('en-GB') : '-',
+                a.soldCount,
+                a.assignedCount,
+                a.totalAmount,
+                'Settled'
+            ].join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `settlement_history_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+    };
+
+    const handleExportAllocations = () => {
+        if (assignments.length === 0) return;
+        const headers = ['Staff Name', 'Item', 'Assigned Date', 'Assigned Qty', 'Series', 'Status'];
+        const csvContent = [
+            headers.join(','),
+            ...assignments.map(a => [
+                `"${a.staff.name}"`,
+                `"${a.ticketType.name}"`,
+                new Date(a.assignedDate).toLocaleDateString('en-GB'),
+                a.assignedCount,
+                `"${a.seriesLabel} (${a.startNumber}-${a.endNumber})"`,
+                a.status
+            ].join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `allocation_history_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+    };
 
     return (
         <div className="space-y-6">
@@ -347,6 +409,21 @@ export function StaffAllocationInterface({
                                         <TableCell className="text-right">
                                             <Button
                                                 size="sm"
+                                                variant="outline"
+                                                className="mr-2"
+                                                title="Add Additional Bundle"
+                                                onClick={() => {
+                                                    setSelectedStaff(assign.staff.id.toString());
+                                                    setSelectedItem(assign.ticketType.id.toString());
+                                                    setQuantity(0);
+                                                    setSelectedStock('');
+                                                    setOpenAssign(true);
+                                                }}
+                                            >
+                                                <Plus className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                                size="sm"
                                                 onClick={() => {
                                                     setSelectedAssignment(assign);
                                                     setOpenSettle(true);
@@ -379,6 +456,11 @@ export function StaffAllocationInterface({
                 </TabsContent>
 
                 <TabsContent value="history">
+                    <div className="flex justify-end mb-2">
+                        <Button variant="outline" size="sm" onClick={handleExportSettlements} className="gap-2">
+                            <Download className="h-4 w-4" /> Download CSV
+                        </Button>
+                    </div>
                     <div className="border rounded-md bg-white">
                         <Table>
                             <TableHeader>
@@ -414,6 +496,11 @@ export function StaffAllocationInterface({
                 </TabsContent>
 
                 <TabsContent value="all-history">
+                    <div className="flex justify-end mb-2">
+                        <Button variant="outline" size="sm" onClick={handleExportAllocations} className="gap-2">
+                            <Download className="h-4 w-4" /> Download CSV
+                        </Button>
+                    </div>
                     <div className="border rounded-md bg-white">
                         <Table>
                             <TableHeader>
@@ -550,6 +637,39 @@ export function StaffAllocationInterface({
                             )}
                         </div>
 
+                        <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                            <div className="space-y-2">
+                                <Label>Assignment Date</Label>
+                                <div className="relative">
+                                    <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+                                    <Input
+                                        name="assignedDate"
+                                        type="date"
+                                        className="pl-9"
+                                        defaultValue={new Date().toISOString().split('T')[0]}
+                                    />
+                                </div>
+                                <p className="text-xs text-gray-500">Defaults to Today if empty.</p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>KPI / UPI Machine</Label>
+                                <Select name="assignedUpiMachineId">
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Default (Auto)" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="0" className="text-gray-500">Default (from Ticket Type)</SelectItem>
+                                        {upiMachines.map(m => (
+                                            <SelectItem key={m.id} value={m.id.toString()}>
+                                                {m.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-gray-500">Override machine for past dates.</p>
+                            </div>
+                        </div>
+
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setOpenAssign(false)}>Cancel</Button>
                             <Button type="submit" disabled={loading}>Assign</Button>
@@ -591,6 +711,21 @@ export function StaffAllocationInterface({
                                     className="border-blue-200"
                                 />
                                 <p className="text-xs text-gray-500">How many unsold tickets were returned?</p>
+                                <p className="text-xs text-gray-500">How many unsold tickets were returned?</p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Settlement Date</Label>
+                                <div className="relative">
+                                    <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+                                    <Input
+                                        name="returnDate"
+                                        type="date"
+                                        className="pl-9"
+                                        defaultValue={selectedAssignment.assignedDate ? new Date(selectedAssignment.assignedDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}
+                                    />
+                                </div>
+                                <p className="text-xs text-gray-500">Date when money was collected.</p>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">

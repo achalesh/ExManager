@@ -116,44 +116,72 @@ export async function getRevenueShareReport(eventId: number) {
     }
 
     try {
-        // Fetch all Amusement Owners with their linked Ticket Types
+        // Fetch all Amusement Owners with their linked Ticket Shares for this event
         const owners = await prisma.amusementOwner.findMany({
             include: {
-                ticketTypes: {
-                    where: { eventId: eventId },
+                ticketShares: {
+                    where: { ticketType: { eventId: eventId } },
                     include: {
-                        // We need sales data.
-                        // TicketSaleItem links to TicketType.
-                        // Use aggregation on saleItems if possible?
-                        // Or select saleItems to calculate.
-                        saleItems: {
-                            select: {
-                                price: true // The price it was sold at
+                        ticketType: {
+                            include: {
+                                saleItems: {
+                                    select: { price: true }
+                                }
                             }
                         }
+                    }
+                },
+                // Also fetch legacy direct links if any exist, for backward compatibility or transition
+                ticketTypes: {
+                    where: { eventId: eventId, ownerShares: { none: {} } }, // Only those WITHOUT shares defined
+                    include: {
+                        saleItems: { select: { price: true } }
                     }
                 }
             }
         });
 
         const report = owners.map((owner: any) => {
-            const rides = owner.ticketTypes.map((ride: any) => {
+            const rides: any[] = [];
+
+            // 1. Process New Share Model
+            owner.ticketShares.forEach((share: any) => {
+                const ride = share.ticketType;
+                const totalSales = ride.saleItems.reduce((sum: number, item: any) => sum + item.price, 0);
+                const quantitySold = ride.saleItems.length;
+                const shareAmount = (totalSales * share.sharePercentage) / 100;
+
+                rides.push({
+                    id: ride.id,
+                    name: ride.name,
+                    quantitySold,
+                    totalSales,
+                    sharePercentage: share.sharePercentage,
+                    shareAmount
+                });
+            });
+
+            // 2. Process Legacy Direct Links (if any remain that don't have shares)
+            owner.ticketTypes.forEach((ride: any) => {
                 const totalSales = ride.saleItems.reduce((sum: number, item: any) => sum + item.price, 0);
                 const quantitySold = ride.saleItems.length;
                 const shareAmount = (totalSales * ride.ownerSharePercentage) / 100;
 
-                return {
+                rides.push({
                     id: ride.id,
                     name: ride.name,
                     quantitySold,
                     totalSales,
                     sharePercentage: ride.ownerSharePercentage,
                     shareAmount
-                };
+                });
             });
 
             const totalOwnerShare = rides.reduce((sum: number, ride: any) => sum + ride.shareAmount, 0);
             const totalGross = rides.reduce((sum: number, ride: any) => sum + ride.totalSales, 0);
+
+            // Filter out owners with no activity/rides to declutter report? 
+            // Or keep them to show they have nothing. Keeping all for now.
 
             return {
                 ownerId: owner.id,
@@ -165,9 +193,92 @@ export async function getRevenueShareReport(eventId: number) {
             };
         });
 
-        return { success: true, data: report };
+        // Filter out empty entries if desired
+        const activeReport = report.filter((r: any) => r.rides.length > 0);
+
+        return { success: true, data: activeReport };
     } catch (error) {
         console.error('Error generating revenue share report:', error);
         return { success: false, error: 'Failed to generate report' };
+    }
+}
+
+export async function getAmusementLedgerReport(
+    ownerId: number | undefined,
+    dateStart?: string,
+    dateEnd?: string
+) {
+    const session = await getSession();
+    if (!session || !['Admin', 'Manager', 'Accountant'].includes(session.roleName)) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const whereClause: any = {};
+        if (ownerId) whereClause.amusementOwnerId = ownerId;
+
+        if (dateStart && dateEnd) {
+            whereClause.date = {
+                gte: new Date(dateStart),
+                lte: new Date(dateEnd)
+            };
+        } else if (dateStart) {
+            const start = new Date(dateStart);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(dateStart);
+            end.setHours(23, 59, 59, 999);
+            whereClause.date = {
+                gte: start,
+                lte: end
+            };
+        }
+
+        const ledgerEntries = await prisma.amusementLedger.findMany({
+            where: whereClause,
+            include: {
+                ticketType: true,
+                amusementOwner: true
+            },
+            orderBy: { date: 'desc' }
+        });
+
+        // calculate totals
+        let totalOwnerShare = 0;
+        let totalCollectedByOwner = 0;
+
+        const entries = ledgerEntries.map(entry => {
+            totalOwnerShare += entry.ownerShareAmount;
+            // @ts-ignore - Prisma types might be stale
+            const collected = entry.collectedByOwner || 0;
+            totalCollectedByOwner += collected;
+
+            return {
+                id: entry.id,
+                date: entry.date,
+                ownerName: entry.amusementOwner.name,
+                itemName: entry.ticketType.name,
+                soldCount: entry.soldCount,
+                totalSales: entry.totalSales,
+                sharePercentage: entry.ownerSharePercentage,
+                ownerShareAmount: entry.ownerShareAmount,
+                companyShareAmount: entry.companyShareAmount,
+                status: entry.status,
+                collectedByOwner: collected,
+                netPayable: entry.ownerShareAmount - collected
+            };
+        });
+
+        return {
+            success: true,
+            data: {
+                entries,
+                totalOwnerShare,
+                totalCollectedByOwner,
+                totalNetPayable: totalOwnerShare - totalCollectedByOwner
+            }
+        };
+    } catch (error) {
+        console.error('Error fetching ledger report:', error);
+        return { success: false, error: 'Failed to fetch ledger report' };
     }
 }

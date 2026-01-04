@@ -24,6 +24,13 @@ interface TicketType {
     price: number;
     amusementOwner?: { name: string } | null;
     ownerSharePercentage?: number;
+    ownerShares?: {
+        amusementOwner: { name: string };
+        sharePercentage: number;
+    }[];
+    upiMachine?: {
+        name: string;
+    } | null;
 }
 
 export function TicketItemsList({ initialItems, eventId }: { initialItems: TicketType[], eventId: number }) {
@@ -58,6 +65,7 @@ export function TicketItemsList({ initialItems, eventId }: { initialItems: Ticke
                             <TableHead>Category</TableHead>
                             <TableHead>Price</TableHead>
                             <TableHead>Owner (Share)</TableHead>
+                            <TableHead>UPI Machine</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -72,12 +80,31 @@ export function TicketItemsList({ initialItems, eventId }: { initialItems: Ticke
                                 </TableCell>
                                 <TableCell>₹{item.price}</TableCell>
                                 <TableCell>
-                                    {item.amusementOwner ? (
+                                    {/* Multi-Owner Display */}
+                                    {item.ownerShares && item.ownerShares.length > 0 ? (
+                                        <div className="flex flex-col gap-1">
+                                            {item.ownerShares.map((share: any, idx: number) => (
+                                                <span key={idx} className="text-sm text-gray-600">
+                                                    {share.amusementOwner?.name} ({share.sharePercentage}%)
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : item.amusementOwner ? (
+                                        // Fallback for legacy data/UI
                                         <span className="text-sm text-gray-600">
                                             {item.amusementOwner.name} ({item.ownerSharePercentage}%)
                                         </span>
                                     ) : (
                                         <span className="text-gray-400">-</span>
+                                    )}
+                                </TableCell>
+                                <TableCell>
+                                    {item.upiMachine ? (
+                                        <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50">
+                                            {item.upiMachine.name}
+                                        </Badge>
+                                    ) : (
+                                        <span className="text-gray-400 text-xs text-center block">Default</span>
                                     )}
                                 </TableCell>
                                 <TableCell className="text-right">

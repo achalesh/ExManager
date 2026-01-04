@@ -99,6 +99,8 @@ model StaffTicketAssignment {
   totalAmount       Float?          @default(0.0)
   cashReceived      Float?          @default(0.0)
   upiReceived       Float?          @default(0.0) // Added field for digital payments
+  assignedUpiMachineId Int?
+  assignedUpiMachine   UPIMachine? @relation(fields: [assignedUpiMachineId], references: [id])
   difference        Float?          @default(0.0) // (Cash + UPI) - TotalAmount
   remarks           String?
   
@@ -131,9 +133,30 @@ model Space {
   positionY    Int?          // Y coordinate for visual map
   status       String        @default("Available") // Available, Booked, Reserved
   bookings     Booking[]
+  
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 }
+
+model UPITransaction {
+  id              String   @id @default(uuid())
+  
+  upiMachineId    Int
+  upiMachine      UPIMachine @relation(fields: [upiMachineId], references: [id])
+  
+  transactionId   String   @unique
+  amount          Float
+  date            DateTime
+  status          String   // PAYMENT_SUCCESS, etc.
+  payerName       String?
+  payerVPA        String?
+  metadata        String?  // JSON string for extra fields
+  
+  reconciled      Boolean  @default(false)
+  
+  createdAt       DateTime @default(now())
+}
+
 
 model Exhibitor {
   id                      Int                    @id @default(autoincrement())
@@ -330,6 +353,10 @@ model AmusementOwner {
   address       String       @default("")
   contactNumber String       @default("")
   ticketTypes   TicketType[]
+  ticketShares  TicketOwnerShare[]
+  ledgerEntries AmusementLedger[]
+  upiMachines   UPIMachine[]
+
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 }
@@ -345,12 +372,82 @@ model TicketType {
   amusementOwnerId Int?
   amusementOwner   AmusementOwner? @relation(fields: [amusementOwnerId], references: [id])
   ownerSharePercentage Float @default(0.0)
+  
+  ownerShares TicketOwnerShare[]
 
   batches   TicketBatch[]
   saleItems TicketSaleItem[]
   staffAssignments StaffTicketAssignment[] // Added relation
+  
+  upiMachineId  Int?
+  upiMachine    UPIMachine? @relation(fields: [upiMachineId], references: [id])
+
+  ledgerEntries AmusementLedger[]
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
+}
+
+model TicketOwnerShare {
+  id               Int            @id @default(autoincrement())
+  ticketTypeId     Int
+  ticketType       TicketType     @relation(fields: [ticketTypeId], references: [id], onDelete: Cascade)
+  amusementOwnerId Int
+  amusementOwner   AmusementOwner @relation(fields: [amusementOwnerId], references: [id])
+  sharePercentage  Float          @default(0.0)
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([ticketTypeId, amusementOwnerId]) // Prevent duplicate entries for same owner on same ticket
+}
+
+model UPIMachine {
+  id               Int      @id @default(autoincrement())
+  name             String   // e.g. "Main Gate PhonePe", "Space Gun Personal"
+  provider         String   // PhonePe, Paytm, GPay, etc.
+  terminalId       String?  // For CSV matching (optional at start)
+  merchantId       String?
+  
+  isCompanyOwned   Boolean  @default(true)
+  
+  amusementOwnerId Int?
+  amusementOwner   AmusementOwner? @relation(fields: [amusementOwnerId], references: [id])
+  
+  ticketTypes      TicketType[]    // Defaults for these tickets
+  transactions     UPITransaction[]
+  staffAssignments StaffTicketAssignment[]
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model AmusementLedger {
+  id               Int            @id @default(autoincrement())
+  date             DateTime       @default(now())
+  
+  amusementOwnerId Int
+  amusementOwner   AmusementOwner @relation(fields: [amusementOwnerId], references: [id])
+  
+  ticketTypeId     Int
+  ticketType       TicketType     @relation(fields: [ticketTypeId], references: [id])
+  
+  details          String         // e.g. "Space Gun - 50 tickets"
+  soldCount        Int
+  totalSales       Float          // Gross amount collected
+  
+  ownerSharePercentage Float
+  ownerShareAmount     Float // Amount owed TO owner (Liability)
+  companyShareAmount   Float // Amount kept BY company (Income)
+  
+  collectedByOwner     Float @default(0) // Amount collected by owner directly (e.g. via own UPI)
+  
+  settledAssignmentId Int?        // Link to staff assignment if applicable
+  // We can't easily link StaffTicketAssignment here because it might be a circular dependency or simple loose link is better if we don't want strict relation constraints
+  
+  status           String         @default("Pending") // Pending, Paid
+  
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 }
 
 model TicketBatch {

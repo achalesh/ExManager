@@ -20,6 +20,8 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState<string>('Amusement');
+    const [customCategory, setCustomCategory] = useState<string>('');
     const router = useRouter();
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -28,13 +30,24 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
         setError('');
 
         const formData = new FormData(e.currentTarget);
+
+        let finalCategory = selectedCategory;
+        if (selectedCategory === 'Other') {
+            if (!customCategory.trim()) {
+                setError('Please enter a category name');
+                setLoading(false);
+                return;
+            }
+            finalCategory = customCategory.trim();
+        }
+
         const data = {
             eventId,
             seriesLabel: formData.get('seriesLabel') as string,
             startNumber: Number(formData.get('startNumber')),
             endNumber: Number(formData.get('endNumber')),
             price: Number(formData.get('price')),
-            category: formData.get('category') as string,
+            category: finalCategory,
         };
 
         const result = await addInventory(data);
@@ -113,16 +126,25 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
                         <Label htmlFor="category">Category</Label>
                         <select
                             id="category"
-                            name="category"
+                            value={selectedCategory}
+                            onChange={(e) => setSelectedCategory(e.target.value)}
                             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                             required
                         >
-                            <option value="General">General</option>
-                            <option value="Entrance">Entrance</option>
                             <option value="Amusement">Amusement</option>
-                            <option value="Parking">Parking</option>
-                            <option value="Food Court">Food Court</option>
+                            <option value="Entrance">Entrance</option>
+                            <option value="Other">Add new category...</option>
                         </select>
+                        {selectedCategory === 'Other' && (
+                            <div className="pt-2">
+                                <Input
+                                    placeholder="Enter Category Name"
+                                    value={customCategory}
+                                    onChange={(e) => setCustomCategory(e.target.value)}
+                                    required={selectedCategory === 'Other'}
+                                />
+                            </div>
+                        )}
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => setOpen(false)}>
