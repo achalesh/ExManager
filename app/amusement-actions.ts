@@ -106,7 +106,7 @@ export async function deleteAmusementOwner(id: number) {
 
 // --- Reporting ---
 
-export async function getRevenueShareReport(eventId: number) {
+export async function getRevenueShareReport(eventId: number, startDate?: string, endDate?: string) {
     // Determine the report range or scope? For now, fetch ALL sales for linked tickets
     // Optimization: Depending on data volume, raw query might be better, but prisma aggregate is cleaner for now.
 
@@ -116,6 +116,23 @@ export async function getRevenueShareReport(eventId: number) {
     }
 
     try {
+        // Date Filter Construction
+        const dateFilter: any = {};
+        if (startDate) {
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            dateFilter.gte = start;
+        }
+        if (endDate) {
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            dateFilter.lte = end;
+        }
+
+        const saleItemWhere = Object.keys(dateFilter).length > 0
+            ? { sale: { createdAt: dateFilter } }
+            : {};
+
         // Fetch all Amusement Owners with their linked Ticket Shares for this event
         const owners = await prisma.amusementOwner.findMany({
             include: {
@@ -125,6 +142,7 @@ export async function getRevenueShareReport(eventId: number) {
                         ticketType: {
                             include: {
                                 saleItems: {
+                                    where: saleItemWhere,
                                     select: { price: true }
                                 }
                             }
@@ -135,7 +153,10 @@ export async function getRevenueShareReport(eventId: number) {
                 ticketTypes: {
                     where: { eventId: eventId, ownerShares: { none: {} } }, // Only those WITHOUT shares defined
                     include: {
-                        saleItems: { select: { price: true } }
+                        saleItems: {
+                            where: saleItemWhere,
+                            select: { price: true }
+                        }
                     }
                 }
             }

@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import { getRevenueShareReport } from '@/app/amusement-actions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, AlertCircle, Download, FileText } from 'lucide-react';
+import { Loader2, AlertCircle, Download, FileText, IndianRupee, Ticket, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
 
 interface RevenueShareReportProps {
@@ -33,14 +35,16 @@ export function RevenueShareReport({ eventId, eventName }: RevenueShareReportPro
     const [data, setData] = useState<ReportData[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [startDate, setStartDate] = useState<string>('');
+    const [endDate, setEndDate] = useState<string>('');
 
     useEffect(() => {
         loadReport();
-    }, [eventId]);
+    }, [eventId, startDate, endDate]);
 
     async function loadReport() {
         setLoading(true);
-        const res = await getRevenueShareReport(eventId);
+        const res = await getRevenueShareReport(eventId, startDate, endDate);
         if (res.success && res.data) {
             setData(res.data);
             setError('');
@@ -58,16 +62,87 @@ export function RevenueShareReport({ eventId, eventName }: RevenueShareReportPro
     if (error) return <div className="bg-red-50 text-red-600 p-4 rounded-md flex items-center gap-2"><AlertCircle className="h-5 w-5" /> {error}</div>;
 
     const grandTotalShare = data.reduce((sum, owner) => sum + owner.totalOwnerShare, 0);
+    const grandTotalGross = data.reduce((sum, owner) => sum + owner.totalGross, 0);
+    const grandTotalTickets = data.reduce((sum, owner) => {
+        return sum + owner.rides.reduce((rideSum, ride) => rideSum + ride.quantitySold, 0);
+    }, 0);
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center print:hidden">
-                <div>
-                    {/* Header content if needed */}
+            <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4 print:hidden">
+                <div className="flex items-end gap-4">
+                    <div className="space-y-1">
+                        <Label className="text-xs">From Date</Label>
+                        <div className="relative">
+                            <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+                            <Input
+                                type="date"
+                                className="pl-9 w-[150px]"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs">To Date</Label>
+                        <div className="relative">
+                            <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+                            <Input
+                                type="date"
+                                className="pl-9 w-[150px]"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <Button
+                        variant="ghost"
+                        onClick={() => { setStartDate(''); setEndDate(''); }}
+                        className="text-gray-500 h-10"
+                    >
+                        Reset
+                    </Button>
                 </div>
                 <Button onClick={printReport} variant="outline" className="gap-2">
                     <FileText className="h-4 w-4" /> Print Report
                 </Button>
+            </div>
+
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 print:grid-cols-3 print:gap-4">
+                <Card>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Tickets Sold</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold flex items-center gap-2">
+                            <Ticket className="h-5 w-5 text-purple-600" />
+                            {grandTotalTickets.toLocaleString()}
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Gross Revenue</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold flex items-center gap-2">
+                            <IndianRupee className="h-5 w-5 text-gray-600" />
+                            {grandTotalGross.toLocaleString('en-IN')}
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Payout Liability</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold flex items-center gap-2 text-green-600">
+                            <IndianRupee className="h-5 w-5" />
+                            {grandTotalShare.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
 
             <Card className="print:shadow-none print:border-none">

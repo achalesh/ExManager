@@ -1,0 +1,55 @@
+'use server';
+
+import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
+import { revalidatePath } from 'next/cache';
+import { getSession } from '@/lib/auth';
+
+// --- Schema Definitions ---
+// ... (existing schemas)
+
+const updateAssignmentSchema = z.object({
+    assignmentId: z.coerce.number(),
+    staffId: z.coerce.number(),
+    assignedDate: z.string().optional(),
+    assignedUpiMachineId: z.coerce.number().optional()
+});
+
+// ... (existing functions)
+
+export async function updateStaffAssignment(data: z.infer<typeof updateAssignmentSchema>) {
+    const session = await getSession();
+    if (!session || !['Admin', 'Manager'].includes(session.roleName)) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        const parsed = updateAssignmentSchema.parse(data);
+
+        // Determine UPI Machine
+        let finalMachineId: number | null | undefined = parsed.assignedUpiMachineId;
+        
+        if (finalMachineId === -1) {
+            // Explicit "Nil" selected
+            finalMachineId = null;
+        }
+
+        // Determine Date
+        const assignedDate = parsed.assignedDate ? new Date(parsed.assignedDate) : undefined;
+
+        await prisma.staffTicketAssignment.update({
+            where: { id: parsed.assignmentId },
+            data: {
+                staffId: parsed.staffId,
+                assignedUpiMachineId: finalMachineId,
+                assignedDate: assignedDate
+            }
+        });
+
+        revalidatePath('/dashboard/ticketing/staff');
+        return { success: true };
+    } catch (error: any) {
+        console.error('Failed to update assignment:', error);
+        return { success: false, error: error.message || 'Failed to update assignment' };
+    }
+}

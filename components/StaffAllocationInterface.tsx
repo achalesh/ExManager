@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     Table,
     TableBody,
@@ -28,16 +29,19 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { assignTicketsToStaff, settleStaffAssignment, undoStaffAssignment, assignTicketStock } from '@/app/ticketing-actions';
+import { assignTicketsToStaff, settleStaffAssignment, undoStaffAssignment, assignTicketStock, updateStaffAssignment, undoSettlement } from '@/app/ticketing-actions';
 import { getUPIMachines } from '@/app/upi-actions';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, IndianRupee, Users, Trash, ArrowRightLeft, Plus, Calendar, Download } from 'lucide-react';
+import { Plus, ArrowRightLeft, Users, AlertCircle, Download, Pencil, Trash2, Calendar, IndianRupee, RotateCcw } from 'lucide-react';
 
 interface TicketType {
     id: number;
     name: string;
     category: string;
     price: number;
+    upiMachine?: {
+        name: string;
+    };
     batches?: {
         id: number;
         currentNumber: number;
@@ -73,11 +77,31 @@ interface Assignment {
     assignedCount: number;
     status: string;
     assignedDate: Date;
+    assignedUpiMachineId?: number | null; // Added field for edit
+    // Settlement
+    soldCount?: number;
+    returnedCount?: number;
+    totalAmount?: number;
     // Settlement
     soldCount?: number;
     returnedCount?: number;
     totalAmount?: number;
     returnDate?: Date | null;
+}
+
+interface GroupedAssignment {
+    key: string;
+    staffId: number;
+    staffName: string;
+    ticketTypeId: number;
+    ticketTypeName: string;
+    ticketCategory: string;
+    ticketPrice: number;
+    assignedDate: string;
+    totalAssigned: number;
+    ids: number[];
+    seriesLabels: string[];
+    assignments: Assignment[];
 }
 
 export function StaffAllocationInterface({
@@ -91,11 +115,38 @@ export function StaffAllocationInterface({
     inventory: TicketInventory[],
     assignments: Assignment[]
 }) {
+    // Helper for max date
+    const todayStr = new Date().toISOString().split('T')[0];
+
     const [openAssign, setOpenAssign] = useState(false);
     const [openSettle, setOpenSettle] = useState(false);
+    const [openEdit, setOpenEdit] = useState(false);
     const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+
+    // Settle Logic States
+    const [returnCount, setReturnCount] = useState<number>(0);
+
+    // Reset settle states when dialog opens/assignment changes
+    useEffect(() => {
+        setReturnCount(0);
+    }, [selectedAssignment]);
+
+    const handleFirstReturnChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!selectedAssignment) return;
+        const startNum = Number(e.target.value);
+        if (!startNum) return;
+
+        // Count = End - Start + 1
+        // Example: 100 to 200. Return 191 to 200.
+        // Count = 200 - 191 + 1 = 10.
+        const calculatedCount = selectedAssignment.endNumber - startNum + 1;
+
+        if (calculatedCount >= 0 && calculatedCount <= selectedAssignment.assignedCount) {
+            setReturnCount(calculatedCount);
+        }
+    };
     const router = useRouter();
 
     // Assignment Form State
@@ -105,9 +156,237 @@ export function StaffAllocationInterface({
     const [quantity, setQuantity] = useState<number>(0);
 
     // Counter Allocation State
+    // Counter Allocation State
     const [selectedItemForBatch, setSelectedItemForBatch] = useState<TicketType | null>(null);
     const [openAssignBatch, setOpenAssignBatch] = useState(false);
     const [loadingBatch, setLoadingBatch] = useState(false);
+
+    // Bulk ASSIGN State
+    const [openBulkAssign, setOpenBulkAssign] = useState(false);
+    const [bulkAssignStaff, setBulkAssignStaff] = useState('');
+    const [bulkAssignItem, setBulkAssignItem] = useState('');
+    const [bulkAssignStockIds, setBulkAssignStockIds] = useState<number[]>([]);
+    const [bulkAssignDate, setBulkAssignDate] = useState(todayStr); // todayStr from props
+    const [bulkAssignUpiMachine, setBulkAssignUpiMachine] = useState('0'); // 0=Default, -1=Nil
+    const [bulkAssignLoading, setBulkAssignLoading] = useState(false);
+    const [bulkAssignError, setBulkAssignError] = useState('');
+
+    // Filter stock for Bulk Assign
+    const bulkCompatibleStock = bulkAssignItem
+        ? inventory.filter(inv => {
+            const type = items.find(i => i.id.toString() === bulkAssignItem);
+            return type && inv.status === 'Available' && inv.category === type.category && inv.price === type.price;
+        })
+        : [];
+
+    const handleBulkAssignSubmit = async () => {
+        if (!bulkAssignStaff || !bulkAssignItem || bulkAssignStockIds.length === 0) {
+            setBulkAssignError('Please select Staff, Ticket Type, and at least one Bundle.');
+            return;
+        }
+        setBulkAssignLoading(true);
+        setBulkAssignError('');
+
+        // Prepare payload
+        // We need quantity for each bundle.
+        // Assuming we assign the FULL bundle?
+        // Wait, regular assignment asks for "Quantity".
+        // But usually we assign whole remaining bundles.
+        // Let's assume we assign the WHOLE remaining quantity of the selected bundles.
+
+        const assignmentsPayload = bulkAssignStockIds.map(invId => {
+            const inv = inventory.find(i => i.id === invId);
+            if (!inv) return null;
+            return {
+                staffId: Number(bulkAssignStaff),
+                ticketTypeId: Number(bulkAssignItem),
+                inventoryId: invId,
+                quantity: inv.currentNumber <= inv.endNumber ? (inv.endNumber - inv.currentNumber + 1) : 0, // Remaining Count
+                assignedDate: bulkAssignDate,
+                assignedUpiMachineId: bulkAssignUpiMachine === '0' ? undefined : Number(bulkAssignUpiMachine)
+            };
+        }).filter(Boolean) as any[];
+
+        // Check for 0 quantity
+        const validPayload = assignmentsPayload.filter(a => a.quantity > 0);
+
+        if (validPayload.length === 0) {
+            setBulkAssignError('Selected bundles have 0 remaining quantity.');
+            setBulkAssignLoading(false);
+            return;
+        }
+
+        const res = await import('@/app/ticketing-actions').then(m => m.bulkAssignTickets(validPayload));
+
+        if (res.success) {
+            setOpenBulkAssign(false);
+            setBulkAssignStockIds([]);
+            router.refresh();
+        } else {
+            setBulkAssignError(res.error || 'Failed to assign');
+        }
+        setBulkAssignLoading(false);
+    };
+
+    const toggleBulkStock = (id: number) => {
+        setBulkAssignStockIds(prev =>
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    };
+
+    // Bulk Settle State
+    const [selectedAssignmentIds, setSelectedAssignmentIds] = useState<number[]>([]);
+    const [selectedGroup, setSelectedGroup] = useState<GroupedAssignment | null>(null);
+    const [openBulkSettle, setOpenBulkSettle] = useState(false);
+    const [bulkReturns, setBulkReturns] = useState<Record<string, number>>({});
+    const [bulkFirstReturns, setBulkFirstReturns] = useState<Record<string, string>>({});
+    const [bulkCash, setBulkCash] = useState<number>(0);
+    const [bulkUpi, setBulkUpi] = useState<number>(0);
+    const [bulkError, setBulkError] = useState('');
+
+    const toggleSelection = (id: number) => {
+        // Legacy toggle single ID
+        setSelectedAssignmentIds(prev =>
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    };
+
+    const handleBulkSettleClick = () => {
+        // Initialize returns for selected GROUPS
+        const selectedAssigns = activeAssignments.filter(a => selectedAssignmentIds.includes(a.id));
+        const groups = groupActiveAssignments(selectedAssigns);
+
+        const initialReturns: Record<string, number> = {};
+        groups.forEach(g => initialReturns[g.key] = 0);
+
+        setBulkReturns(initialReturns);
+        setBulkFirstReturns({});
+        setBulkCash(0);
+        setBulkUpi(0);
+        setBulkError('');
+        setOpenBulkSettle(true);
+    };
+
+    const handleBulkReturnChange = (key: string, val: number, max: number) => {
+        const safeVal = Math.min(Math.max(0, val), max);
+        setBulkReturns(prev => ({ ...prev, [key]: safeVal }));
+        setBulkFirstReturns(prev => ({ ...prev, [key]: '' }));
+    };
+
+    const handleBulkFirstReturnChange = (key: string, val: string, group: GroupedAssignment) => {
+        // Allow clearing input
+        if (val === '') {
+            setBulkFirstReturns(prev => ({ ...prev, [key]: '' }));
+            setBulkReturns(prev => ({ ...prev, [key]: 0 }));
+            return;
+        }
+
+        const startNum = Number(val);
+        if (isNaN(startNum)) return;
+
+        // Find the "last" batch in the group to apply logic
+        // Let's find which batch this number belongs to.
+        const targetBatch = group.assignments.find(a => startNum >= a.startNumber && startNum <= a.endNumber);
+
+        if (targetBatch) {
+            const sorted = [...group.assignments].sort((a, b) => a.id - b.id);
+            const batchIndex = sorted.indexOf(targetBatch);
+
+            let calculatedTotalReturns = 0;
+
+            // Returns from target batch
+            calculatedTotalReturns += (targetBatch.endNumber - startNum + 1);
+
+            // Returns from all subsequent batches (higher start numbers)
+            for (let i = batchIndex + 1; i < sorted.length; i++) {
+                calculatedTotalReturns += sorted[i].assignedCount;
+            }
+
+            if (calculatedTotalReturns >= 0 && calculatedTotalReturns <= group.totalAssigned) {
+                setBulkReturns(prev => ({ ...prev, [key]: calculatedTotalReturns }));
+                setBulkFirstReturns(prev => ({ ...prev, [key]: val }));
+            }
+        } else {
+            // Maybe entered number is out of range?
+            setBulkFirstReturns(prev => ({ ...prev, [key]: val }));
+        }
+    };
+
+    const calculateBulkTotalSold = () => {
+        let total = 0;
+        const selectedAssigns = activeAssignments.filter(a => selectedAssignmentIds.includes(a.id));
+        const groups = groupActiveAssignments(selectedAssigns);
+
+        groups.forEach(g => {
+            const ret = bulkReturns[g.key] || 0;
+            const sold = g.totalAssigned - ret;
+            total += sold * g.ticketPrice;
+        });
+
+        return total;
+    };
+
+    const handleBulkSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setBulkError('');
+
+        const totalSold = calculateBulkTotalSold();
+
+        // 1. Resolve Settlements per Assignment
+        const selectedAssigns = activeAssignments.filter(a => selectedAssignmentIds.includes(a.id));
+        const groups = groupActiveAssignments(selectedAssigns);
+
+        let allSettlements: any[] = [];
+
+        groups.forEach(g => {
+            let pendingReturns = bulkReturns[g.key] || 0;
+
+            // Distribute returns to LAST batches first (highest start number)
+            const sorted = [...g.assignments].sort((a, b) => b.id - a.id);
+
+            sorted.forEach(asm => {
+                const canReturn = asm.assignedCount;
+                const actualReturn = Math.min(canReturn, pendingReturns);
+
+                allSettlements.push({
+                    assignmentId: asm.id,
+                    returnCount: actualReturn,
+                    assignedCount: asm.assignedCount,
+                    price: asm.ticketType.price,
+                    assignedDate: asm.assignedDate
+                });
+
+                pendingReturns -= actualReturn;
+            });
+        });
+
+        // 2. Calculate Cash/UPI per assignment
+        const payload = allSettlements.map(item => {
+            const soldVal = (item.assignedCount - item.returnCount) * item.price;
+            const ratio = totalSold > 0 ? soldVal / totalSold : 0;
+
+            return {
+                assignmentId: item.assignmentId,
+                returnCount: item.returnCount,
+                cashReceived: bulkCash * ratio,
+                upiReceived: bulkUpi * ratio,
+                returnDate: new Date(item.assignedDate).toISOString().split('T')[0]
+            };
+        });
+
+        const res = await import('@/app/ticketing-actions').then(m => m.bulkSettleAssignments(payload));
+        if (res.success) {
+            setOpenBulkSettle(false);
+            setSelectedAssignmentIds([]);
+            router.refresh();
+        } else {
+            setBulkError(res.error || 'Failed to settle');
+        }
+        setLoading(false);
+    };
+
+
 
     // Backdating & UPI Override State
     const [upiMachines, setUpiMachines] = useState<any[]>([]);
@@ -118,6 +397,14 @@ export function StaffAllocationInterface({
         getUPIMachines().then(res => {
             if (res.success && res.data) setUpiMachines(res.data);
         });
+    }, []);
+
+    // Auto-focus Assign Button
+    const assignButtonRef = useRef<HTMLButtonElement>(null);
+    useEffect(() => {
+        if (assignButtonRef.current) {
+            assignButtonRef.current.focus();
+        }
     }, []);
 
     const handleAssignBatchClick = (item: TicketType) => {
@@ -192,6 +479,68 @@ export function StaffAllocationInterface({
         setLoading(false);
     };
 
+    const handleEditSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        const formData = new FormData(e.currentTarget);
+        const staffId = Number(formData.get('staffId'));
+        const assignedDate = formData.get('assignedDate') as string;
+        const assignedUpiMachineId = formData.get('assignedUpiMachineId') ? Number(formData.get('assignedUpiMachineId')) : undefined;
+
+        if (selectedGroup) {
+            let errorCount = 0;
+            for (const id of selectedGroup.ids) {
+                const res = await updateStaffAssignment({
+                    assignmentId: id,
+                    staffId,
+                    assignedDate,
+                    assignedUpiMachineId
+                });
+                if (!res.success) errorCount++;
+            }
+            if (errorCount > 0) setError(`Failed to update ${errorCount} assignments.`);
+            else {
+                setOpenEdit(false);
+                setSelectedGroup(null);
+                router.refresh();
+            }
+        } else if (selectedAssignment) {
+            const res = await updateStaffAssignment({
+                assignmentId: selectedAssignment.id,
+                staffId,
+                assignedDate,
+                assignedUpiMachineId
+            });
+
+            if (res.success) {
+                setOpenEdit(false);
+                router.refresh();
+            } else {
+                setError(res.error || 'Failed to update assignment');
+            }
+        }
+        setLoading(false);
+    };
+
+    const handleGroupUndo = async (group: GroupedAssignment) => {
+        if (!confirm(`Are you sure you want to undo ALL allocations for this group (${group.totalAssigned} tickets)?`)) return;
+        setLoading(true);
+
+        let errorCount = 0;
+        for (const id of group.ids) {
+            const res = await undoStaffAssignment(id);
+            if (!res.success) errorCount++;
+        }
+
+        if (errorCount > 0) {
+            alert(`Failed to undo ${errorCount} assignments. They might be already settled.`);
+        }
+        router.refresh();
+        setLoading(false);
+    };
+
     const handleSettleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!selectedAssignment) return;
@@ -229,8 +578,72 @@ export function StaffAllocationInterface({
         setLoading(false);
     };
 
+    const handleUndoSettlement = async (assignmentId: number) => {
+        if (!confirm('Are you sure you want to Undo this settlement? This will reverse sales, financials, and restock returned tickets. Use caution.')) return;
+        setLoading(true);
+        const res = await undoSettlement(assignmentId);
+        if (res.success) {
+            router.refresh();
+        } else {
+            alert(res.error || 'Failed to undo settlement');
+        }
+        setLoading(false);
+    };
+
     const activeAssignments = assignments.filter(a => a.status === 'Assigned');
-    const pastAssignments = assignments.filter(a => a.status === 'Returned');
+    const pastAssignments = assignments.filter(a => ['Returned', 'Settled'].includes(a.status));
+
+    // Group Active Assignments
+    const groupActiveAssignments = (list: Assignment[]): GroupedAssignment[] => {
+        const groups: Record<string, GroupedAssignment> = {};
+
+        list.forEach(a => {
+            const dateStr = new Date(a.assignedDate).toISOString().split('T')[0];
+            const key = `${a.staff.id}-${a.ticketType.id}-${dateStr}`;
+
+            if (!groups[key]) {
+                groups[key] = {
+                    key,
+                    staffId: a.staff.id,
+                    staffName: a.staff.name,
+                    ticketTypeId: a.ticketType.id,
+                    ticketTypeName: a.ticketType.name,
+                    ticketCategory: a.ticketType.category,
+                    ticketPrice: a.ticketType.price,
+                    assignedDate: dateStr,
+                    totalAssigned: 0,
+                    ids: [],
+                    seriesLabels: [],
+                    assignments: []
+                };
+            }
+            groups[key].totalAssigned += a.assignedCount;
+            groups[key].ids.push(a.id);
+            groups[key].seriesLabels.push(`${a.seriesLabel} (${a.startNumber}-${a.endNumber})`);
+            groups[key].assignments.push(a);
+        });
+
+        return Object.values(groups).sort((a, b) => b.ids[0] - a.ids[0]);
+    };
+
+    const activeGroups = groupActiveAssignments(activeAssignments);
+
+    const toggleGroupSelection = (group: GroupedAssignment) => {
+        const allSelected = group.ids.every(id => selectedAssignmentIds.includes(id));
+        if (allSelected) {
+            setSelectedAssignmentIds(prev => prev.filter(id => !group.ids.includes(id)));
+        } else {
+            setSelectedAssignmentIds(prev => {
+                const newIds = [...prev];
+                group.ids.forEach(id => {
+                    if (!newIds.includes(id)) newIds.push(id);
+                });
+                return newIds;
+            });
+        }
+    };
+
+    // Filter compatible stock for assignment
 
     // Filter compatible stock for assignment
     const currentTicketType = items.find(i => i.id.toString() === selectedItem);
@@ -261,6 +674,8 @@ export function StaffAllocationInterface({
         a.download = `settlement_history_${new Date().toISOString().split('T')[0]}.csv`;
         a.click();
     };
+
+    const editTarget = selectedAssignment || selectedGroup?.assignments[0];
 
     const handleExportAllocations = () => {
         if (assignments.length === 0) return;
@@ -294,7 +709,17 @@ export function StaffAllocationInterface({
                     </h2>
                     <p className="text-sm text-gray-500">Assign tickets to staff for manual selling</p>
                 </div>
-                <Button onClick={() => setOpenAssign(true)}>Assign New Bundle</Button>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => {
+                        setBulkAssignStaff('');
+                        setBulkAssignItem('');
+                        setBulkAssignStockIds([]);
+                        setOpenBulkAssign(true);
+                    }}>
+                        Bulk Assign
+                    </Button>
+                    <Button ref={assignButtonRef} onClick={() => setOpenAssign(true)}>Assign New Bundle</Button>
+                </div>
             </div>
 
             <Tabs defaultValue="active">
@@ -379,73 +804,129 @@ export function StaffAllocationInterface({
                 </TabsContent>
 
                 <TabsContent value="active" className="space-y-4">
+                    <div className="flex items-center gap-4 mb-2">
+                        {selectedAssignmentIds.length > 0 && (
+                            <Button size="sm" onClick={handleBulkSettleClick} className="bg-green-600 hover:bg-green-700 text-white">
+                                Settle Selected ({selectedAssignmentIds.length})
+                            </Button>
+                        )}
+                    </div>
                     <div className="border rounded-md bg-white">
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    <TableHead className="w-[50px]">
+                                        {/* Select All */}
+                                    </TableHead>
                                     <TableHead>Staff Name</TableHead>
                                     <TableHead>Ticket Item</TableHead>
                                     <TableHead>Series / Range</TableHead>
-                                    <TableHead>Assigned Qty</TableHead>
+                                    <TableHead>Total Qty</TableHead>
                                     <TableHead>Date</TableHead>
                                     <TableHead className="text-right">Action</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {activeAssignments.map(assign => (
-                                    <TableRow key={assign.id}>
-                                        <TableCell className="font-medium">{assign.staff.name}</TableCell>
-                                        <TableCell>
-                                            {assign.ticketType.name}
-                                            <span className="text-xs text-gray-500 ml-1">({assign.ticketType.category})</span>
-                                        </TableCell>
-                                        <TableCell className="font-mono text-sm">
-                                            {assign.seriesLabel} (#{assign.startNumber}-{assign.endNumber})
-                                        </TableCell>
-                                        <TableCell>{assign.assignedCount}</TableCell>
-                                        <TableCell className="text-sm text-gray-500">
-                                            {new Date(assign.assignedDate).toLocaleDateString('en-GB')}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                className="mr-2"
-                                                title="Add Additional Bundle"
-                                                onClick={() => {
-                                                    setSelectedStaff(assign.staff.id.toString());
-                                                    setSelectedItem(assign.ticketType.id.toString());
-                                                    setQuantity(0);
-                                                    setSelectedStock('');
-                                                    setOpenAssign(true);
-                                                }}
-                                            >
-                                                <Plus className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                size="sm"
-                                                onClick={() => {
-                                                    setSelectedAssignment(assign);
-                                                    setOpenSettle(true);
-                                                }}
-                                            >
-                                                Settle
-                                            </Button>
-                                            <Button
-                                                size="sm"
-                                                variant="ghost"
-                                                className="ml-2 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                onClick={() => handleUndo(assign.id)}
-                                                disabled={loading}
-                                            >
-                                                <Trash className="h-4 w-4" />
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                                {activeAssignments.length === 0 && (
+                                {activeGroups.map(group => {
+                                    const isSelected = group.ids.every(id => selectedAssignmentIds.includes(id));
+                                    const partSelected = group.ids.some(id => selectedAssignmentIds.includes(id));
+
+                                    return (
+                                        <TableRow key={group.key}>
+                                            <TableCell>
+                                                <Checkbox
+                                                    checked={isSelected}
+                                                    onCheckedChange={() => toggleGroupSelection(group)}
+                                                    className={partSelected && !isSelected ? "opacity-50" : ""}
+                                                />
+                                            </TableCell>
+                                            <TableCell className="font-medium">{group.staffName}</TableCell>
+                                            <TableCell>
+                                                {group.ticketTypeName}
+                                                <span className="text-xs text-gray-500 ml-1">({group.ticketCategory})</span>
+                                            </TableCell>
+                                            <TableCell className="font-mono text-xs max-w-[200px] break-words">
+                                                {group.seriesLabels.join(', ')}
+                                            </TableCell>
+                                            <TableCell className="font-bold">{group.totalAssigned}</TableCell>
+                                            <TableCell className="text-sm text-gray-500">
+                                                {new Date(group.assignedDate).toLocaleDateString('en-GB')}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="mr-2"
+                                                    title="Add Additional Bundle"
+                                                    onClick={() => {
+                                                        setSelectedStaff(group.staffId.toString());
+                                                        setSelectedItem(group.ticketTypeId.toString());
+                                                        setQuantity(0);
+                                                        setSelectedStock('');
+                                                        setOpenAssign(true);
+                                                    }}
+                                                >
+                                                    <Plus className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="mr-2"
+                                                    title="Edit Assignment Group"
+                                                    onClick={() => {
+                                                        setSelectedGroup(group);
+                                                        // Pre-fill form
+                                                        setSelectedStaff(group.staffId.toString());
+                                                        // We set assignedDate from the group
+                                                        // Warning: The Edit Dialog needs to handle Date pre-fill if it relies on selectedAssignment
+                                                        // We fake a selectedAssignment or just ensure form uses defaultValue?
+                                                        // Looking at Edit Dialog implementation (not shown fully but likely uses defaults)
+                                                        setOpenEdit(true);
+                                                    }}
+                                                >
+                                                    <Pencil className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    variant="destructive"
+                                                    size="icon"
+                                                    className="mr-2 h-9 w-9"
+                                                    title="Undo All Assignments in Group"
+                                                    onClick={() => handleGroupUndo(group)}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        // Select ONLY this group
+                                                        setSelectedAssignmentIds(group.ids);
+                                                        // Needs timeout or effect to open dialog after state update? 
+                                                        // No, handleBulkSettleClick needs state to be set.
+                                                        // We can't set state and read it in same handler.
+                                                        // We can call a modified handler logic.
+
+                                                        // Hack: Set state then open. Or handleBulkSettleClickWithIds
+                                                        // Let's manually invoke logic here
+                                                        const initialReturns: Record<string, number> = {};
+                                                        initialReturns[group.key] = 0;
+                                                        setBulkReturns(initialReturns);
+                                                        setBulkFirstReturns({});
+                                                        setBulkCash(0);
+                                                        setBulkUpi(0);
+                                                        setBulkError('');
+                                                        setSelectedAssignmentIds(group.ids);
+                                                        setOpenBulkSettle(true);
+                                                    }}
+                                                >
+                                                    Settle
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
+                                {activeGroups.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                                        <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                                             No active staff assignments.
                                         </TableCell>
                                     </TableRow>
@@ -471,6 +952,7 @@ export function StaffAllocationInterface({
                                     <TableHead>Sold / Total</TableHead>
                                     <TableHead>Amount</TableHead>
                                     <TableHead>Status</TableHead>
+                                    <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -487,6 +969,17 @@ export function StaffAllocationInterface({
                                         <TableCell>₹{assign.totalAmount}</TableCell>
                                         <TableCell>
                                             <Badge variant="secondary">Settled</Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                                title="Undo Settlement"
+                                                onClick={() => handleUndoSettlement(assign.id)}
+                                            >
+                                                <RotateCcw className="h-4 w-4" />
+                                            </Button>
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -658,7 +1151,10 @@ export function StaffAllocationInterface({
                                         <SelectValue placeholder="Default (Auto)" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="0" className="text-gray-500">Default (from Ticket Type)</SelectItem>
+                                        <SelectItem value="0" className="text-gray-500">
+                                            Default ({currentTicketType?.upiMachine?.name || 'None'})
+                                        </SelectItem>
+                                        <SelectItem value="-1" className="text-red-500">Nil (No Machine)</SelectItem>
                                         {upiMachines.map(m => (
                                             <SelectItem key={m.id} value={m.id.toString()}>
                                                 {m.name}
@@ -675,6 +1171,187 @@ export function StaffAllocationInterface({
                             <Button type="submit" disabled={loading}>Assign</Button>
                         </DialogFooter>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* EDIT DIALOG */}
+            <Dialog open={openEdit} onOpenChange={setOpenEdit}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit Assignment {selectedGroup ? '(Group)' : ''}</DialogTitle>
+                    </DialogHeader>
+                    {editTarget && (
+                        <form onSubmit={handleEditSubmit} className="space-y-4">
+                            {error && (
+                                <div className="bg-red-50 text-red-500 p-3 rounded-md text-sm flex items-center gap-2">
+                                    <AlertCircle className="h-4 w-4" /> {error}
+                                </div>
+                            )}
+
+                            <div className="space-y-2">
+                                <Label>Staff Member</Label>
+                                <Select name="staffId" defaultValue={editTarget.staff.id.toString()}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select Staff" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {staffList.filter(s => s.department === 'Booking').map(s => (
+                                            <SelectItem key={s.id} value={s.id.toString()}>{s.name} (Booking)</SelectItem>
+                                        ))}
+                                        {staffList.filter(s => s.department !== 'Booking').length > 0 && <div className="border-t my-1"></div>}
+                                        {staffList.filter(s => s.department !== 'Booking').map(s => (
+                                            <SelectItem key={s.id} value={s.id.toString()}>{s.name} ({s.department})</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Assignment Date</Label>
+                                <div className="relative">
+                                    <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+                                    <Input
+                                        name="assignedDate"
+                                        type="date"
+                                        className="pl-9"
+                                        defaultValue={new Date(editTarget.assignedDate).toISOString().split('T')[0]}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>KPI / UPI Machine</Label>
+                                <Select name="assignedUpiMachineId" defaultValue={editTarget.assignedUpiMachineId?.toString() || "0"}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Default (Auto)" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="0" className="text-gray-500">
+                                            Default ({editTarget.ticketType.upiMachine?.name || 'None'})
+                                        </SelectItem>
+                                        <SelectItem value="-1" className="text-red-500">Nil (No Machine)</SelectItem>
+                                        {upiMachines.map(m => (
+                                            <SelectItem key={m.id} value={m.id.toString()}>
+                                                {m.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <DialogFooter>
+                                <Button type="button" variant="outline" onClick={() => setOpenEdit(false)}>Cancel</Button>
+                                <Button type="submit" disabled={loading}>Save Changes</Button>
+                            </DialogFooter>
+                        </form>
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* BULK SETTLE DIALOG */}
+            <Dialog open={openBulkSettle} onOpenChange={setOpenBulkSettle}>
+                <DialogContent className="max-w-[95vw] md:max-w-7xl">
+                    <DialogHeader>
+                        <DialogTitle>Bulk Staff Settlement</DialogTitle>
+                    </DialogHeader>
+
+                    {bulkError && <div className="p-3 bg-red-50 text-red-600 rounded">{bulkError}</div>}
+
+                    <div className="max-h-[70vh] overflow-y-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Staff / Item</TableHead>
+                                    <TableHead>Assigned</TableHead>
+                                    <TableHead>Range</TableHead>
+                                    <TableHead className="w-[120px]">First Return No.</TableHead>
+                                    <TableHead className="w-[100px]">Returns</TableHead>
+                                    <TableHead className="text-right">Sold Value</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {(() => {
+                                    // Groups for settlement
+                                    const selectedAssigns = assignments.filter(a => selectedAssignmentIds.includes(a.id));
+                                    const groups = groupActiveAssignments(selectedAssigns);
+
+                                    return groups.map(group => {
+                                        const ret = bulkReturns[group.key] || 0;
+                                        const sold = group.totalAssigned - ret;
+                                        const val = sold * group.ticketPrice;
+
+                                        return (
+                                            <TableRow key={group.key}>
+                                                <TableCell>
+                                                    <div className="font-bold">{group.staffName}</div>
+                                                    <div className="text-xs text-gray-500">{group.ticketTypeName}</div>
+                                                </TableCell>
+                                                <TableCell>{group.totalAssigned}</TableCell>
+                                                <TableCell className="text-xs break-words max-w-[150px]">
+                                                    {group.seriesLabels.join(', ')}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Input
+                                                        type="number"
+                                                        placeholder="Last Tix #"
+                                                        className="h-8 text-xs border-blue-300"
+                                                        value={bulkFirstReturns[group.key] || ''}
+                                                        onChange={(e) => handleBulkFirstReturnChange(group.key, e.target.value, group)}
+                                                        autoFocus
+                                                    />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="h-8 flex items-center justify-center font-bold bg-gray-50 rounded border border-gray-200 text-gray-700">
+                                                        {ret}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right font-mono">
+                                                    ₹{val.toLocaleString()}
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    });
+                                })()}
+                            </TableBody>
+                        </Table>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-lg items-end">
+                        <div>
+                            <Label>Total Sold Value</Label>
+                            <div className="text-2xl font-bold text-blue-600">₹{calculateBulkTotalSold().toLocaleString()}</div>
+                        </div>
+                        <div>
+                            <Label>Total Cash Received</Label>
+                            <Input
+                                type="number"
+                                value={bulkCash}
+                                onChange={(e) => setBulkCash(Number(e.target.value))}
+                                className="font-bold"
+                            />
+                        </div>
+                        <div>
+                            <Label>Total UPI Received</Label>
+                            <Input
+                                type="number"
+                                value={bulkUpi}
+                                onChange={(e) => setBulkUpi(Number(e.target.value))}
+                                className="font-bold"
+                            />
+                        </div>
+                        <div>
+                            <Label>Short / Excess</Label>
+                            <div className={`text-xl font-bold ${((bulkCash + bulkUpi) - calculateBulkTotalSold()) < 0 ? 'text-red-500' : ((bulkCash + bulkUpi) - calculateBulkTotalSold()) > 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                                {((bulkCash + bulkUpi) - calculateBulkTotalSold()) < 0 ? 'Short: ' : ((bulkCash + bulkUpi) - calculateBulkTotalSold()) > 0 ? 'Excess: ' : ''}
+                                ₹{Math.abs((bulkCash + bulkUpi) - calculateBulkTotalSold()).toLocaleString()}
+                            </div>
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setOpenBulkSettle(false)}>Cancel</Button>
+                        <Button onClick={handleBulkSubmit} disabled={loading}>Confirm Bulk Settlement</Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -699,19 +1376,66 @@ export function StaffAllocationInterface({
                                 </div>
                             )}
 
-                            <div className="space-y-2">
-                                <Label>Returned Tickets Count</Label>
-                                <Input
-                                    name="returnedCount"
-                                    type="number"
-                                    min="0"
-                                    max={selectedAssignment.assignedCount}
-                                    defaultValue={0}
-                                    required
-                                    className="border-blue-200"
-                                />
-                                <p className="text-xs text-gray-500">How many unsold tickets were returned?</p>
-                                <p className="text-xs text-gray-500">How many unsold tickets were returned?</p>
+                            {/* Ticket Number Helper */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="text-blue-600">First Returned Ticket No.</Label>
+                                    <Input
+                                        id="firstReturnedInput"
+                                        type="number"
+                                        placeholder={`${selectedAssignment.endNumber}`}
+                                        onChange={handleFirstReturnChange}
+                                        className="border-blue-200"
+                                    />
+                                    <p className="text-[10px] text-gray-400">Auto-calculate count</p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <Label>Returned Count</Label>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-5 px-2 text-[10px] text-green-600 hover:text-green-700 hover:bg-green-50"
+                                            onClick={() => {
+                                                setReturnCount(0);
+                                                // Clear the helper input if possible or just rely on state
+                                                const helperInput = document.getElementById('firstReturnedInput') as HTMLInputElement;
+                                                if (helperInput) helperInput.value = '';
+                                            }}
+                                        >
+                                            All Sold (0 Return)
+                                        </Button>
+                                    </div>
+                                    <Input
+                                        name="returnedCount"
+                                        type="number"
+                                        min="0"
+                                        max={selectedAssignment.assignedCount}
+                                        value={returnCount}
+                                        onChange={(e) => setReturnCount(Number(e.target.value))}
+                                        required
+                                        className="font-bold border-green-200"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Live Summary */}
+                            <div className="bg-slate-100 p-3 rounded border border-slate-200 grid grid-cols-2 gap-4 text-center">
+                                <div>
+                                    <div className="text-xs text-gray-500 uppercase font-semibold">Sold Count</div>
+                                    <div className="text-xl font-bold text-green-600">
+                                        {selectedAssignment.assignedCount - returnCount}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="text-xs text-gray-500 uppercase font-semibold">Total Amount</div>
+                                    <div className="text-xl font-bold text-blue-600 flex items-center justify-center gap-1">
+                                        <IndianRupee className="h-4 w-4" />
+                                        {(selectedAssignment.assignedCount - returnCount) * selectedAssignment.ticketType.price}
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="space-y-2">
@@ -721,11 +1445,12 @@ export function StaffAllocationInterface({
                                     <Input
                                         name="returnDate"
                                         type="date"
-                                        className="pl-9"
-                                        defaultValue={selectedAssignment.assignedDate ? new Date(selectedAssignment.assignedDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}
+                                        className="pl-9 bg-gray-100 text-gray-500 cursor-not-allowed"
+                                        defaultValue={new Date(selectedAssignment.assignedDate).toISOString().split('T')[0]}
+                                        readOnly
                                     />
                                 </div>
-                                <p className="text-xs text-gray-500">Date when money was collected.</p>
+                                <p className="text-xs text-gray-500">Same as Assignment Date (Fixed).</p>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
@@ -820,6 +1545,96 @@ export function StaffAllocationInterface({
                             </Button>
                         </DialogFooter>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* BULK ASSIGN DIALOG */}
+            <Dialog open={openBulkAssign} onOpenChange={setOpenBulkAssign}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Bulk Assign Bundles</DialogTitle>
+                    </DialogHeader>
+
+                    {bulkAssignError && <div className="p-3 bg-red-50 text-red-600 rounded">{bulkAssignError}</div>}
+
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Select Staff</Label>
+                                <Select value={bulkAssignStaff} onValueChange={setBulkAssignStaff}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select Staff" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {staffList.filter(s => s.department === 'Booking').map(s => (
+                                            <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Ticket Type</Label>
+                                <Select value={bulkAssignItem} onValueChange={(val) => {
+                                    setBulkAssignItem(val);
+                                    setBulkAssignStockIds([]); // Reset selection when type changes
+                                }}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select Item" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {items.map(i => (
+                                            <SelectItem key={i.id} value={i.id.toString()}>{i.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="border rounded-md p-2 h-[200px] overflow-y-auto bg-slate-50">
+                            <Label className="mb-2 block">Select Bundles (Available: {bulkCompatibleStock.length})</Label>
+                            {bulkAssignItem && bulkCompatibleStock.length === 0 && <p className="text-gray-400 text-sm">No available stock found for this item.</p>}
+
+                            <div className="space-y-1">
+                                {bulkCompatibleStock.map(inv => (
+                                    <div key={inv.id} className="flex items-center space-x-2 p-2 bg-white rounded border hover:bg-gray-50 cursor-pointer" onClick={() => toggleBulkStock(inv.id)}>
+                                        <Checkbox
+                                            checked={bulkAssignStockIds.includes(inv.id)}
+                                            onCheckedChange={() => toggleBulkStock(inv.id)}
+                                        />
+                                        <div className="flex-1 flex justify-between text-sm">
+                                            <span>{inv.seriesLabel} (#{inv.currentNumber} - #{inv.endNumber})</span>
+                                            <Badge variant="secondary">{inv.endNumber - inv.currentNumber + 1} tix</Badge>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Assignment Date</Label>
+                                <Input type="date" value={bulkAssignDate} max={todayStr} onChange={(e) => setBulkAssignDate(e.target.value)} />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Resulting UPI Machine</Label>
+                                <Select value={bulkAssignUpiMachine} onValueChange={setBulkAssignUpiMachine}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="0">Default (Auto)</SelectItem>
+                                        <SelectItem value="-1" className="text-red-500">Nil (No Machine)</SelectItem>
+                                        {upiMachines.map(m => <SelectItem key={m.id} value={m.id.toString()}>{m.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setOpenBulkAssign(false)}>Cancel</Button>
+                        <Button onClick={handleBulkAssignSubmit} disabled={bulkAssignLoading || bulkAssignStockIds.length === 0}>
+                            Assign {bulkAssignStockIds.length} Bundles
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>
