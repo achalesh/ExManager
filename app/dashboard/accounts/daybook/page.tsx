@@ -12,7 +12,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
 
     const params = await searchParams;
     const date = params.date || new Date().toISOString().slice(0, 10);
-    const { transactions, summary } = await getDailyTransactions(date);
+    const { transactions, dailySummary, eventSummary } = await getDailyTransactions(date);
 
     return (
         <div className="max-w-7xl mx-auto space-y-6">
@@ -28,8 +28,6 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                             name="date"
                             defaultValue={date}
                             className="border rounded-md px-3 py-2 text-sm"
-                        // Simple auto-submit on change could be done with client component, 
-                        // but standard form with button or just enter works for server component
                         />
                         <button type="submit" className="bg-gray-900 text-white px-3 py-2 rounded-md text-sm">Go</button>
                     </form>
@@ -37,59 +35,101 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                 </div>
             </div>
 
-            {/* Summary Cards */}
+            {/* EVENT Summary (Top Cards) */}
+            <h2 className="text-xl font-semibold text-gray-800">Event Overview (All Time)</h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <Card className="bg-green-50 border-green-100">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-green-700">Total Income</CardTitle>
+                        <CardTitle className="text-sm font-medium text-green-700">Event Total Income</CardTitle>
                         <ArrowUpCircle className="h-4 w-4 text-green-600" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-green-700">₹{summary.income.toFixed(2)}</div>
-                        <div className="flex gap-4 mt-1 text-xs text-green-600">
-                            <div>Cash: <span className="font-semibold">₹{(summary.cash || 0).toFixed(2)}</span></div>
-                            <div>UPI: <span className="font-semibold">₹{(summary.upi || 0).toFixed(2)}</span></div>
-                        </div>
+                        <div className="text-2xl font-bold text-green-700">₹{Math.round(eventSummary.income).toLocaleString('en-IN')}</div>
                     </CardContent>
                 </Card>
                 <Card className="bg-red-50 border-red-100">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-red-700">Total Expense</CardTitle>
+                        <CardTitle className="text-sm font-medium text-red-700">Event Total Expense</CardTitle>
                         <ArrowDownCircle className="h-4 w-4 text-red-600" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-red-700">₹{summary.expense.toFixed(2)}</div>
-                        <p className="text-xs text-red-600">for {new Date(date).toLocaleDateString()}</p>
+                        <div className="text-2xl font-bold text-red-700">₹{Math.round(eventSummary.expense).toLocaleString('en-IN')}</div>
                     </CardContent>
                 </Card>
                 <Card className="bg-purple-50 border-purple-100">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-purple-700">Company Account (UPI)</CardTitle>
+                        <CardTitle className="text-sm font-medium text-purple-700">Company Account (All Time)</CardTitle>
                         <Wallet className="h-4 w-4 text-purple-600" />
                     </CardHeader>
                     <CardContent>
-                        <div className={`text-2xl font-bold ${summary.companyBalance < 0 ? 'text-red-700' : 'text-purple-700'}`}>
-                            ₹{summary.companyBalance.toFixed(2)}
-                        </div>
-                        <div className="flex flex-col gap-1 mt-2 text-xs text-purple-600 border-t border-purple-200 pt-2">
-                            <div className="flex justify-between"><span>Amusement:</span> <span className="font-semibold">₹{(summary.upiAmusement || 0).toFixed(2)}</span></div>
-                            <div className="flex justify-between"><span>Entrance:</span> <span className="font-semibold">₹{(summary.upiEntrance || 0).toFixed(2)}</span></div>
-                            <div className="flex justify-between"><span>Office:</span> <span className="font-semibold">₹{(summary.upiOffice || 0).toFixed(2)}</span></div>
+                        <div className={`text-2xl font-bold ${eventSummary.companyBalance < 0 ? 'text-red-700' : 'text-purple-700'}`}>
+                            ₹{Math.round(eventSummary.companyBalance).toLocaleString('en-IN')}
                         </div>
                     </CardContent>
                 </Card>
                 <Card className="bg-blue-50 border-blue-100">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium text-blue-700">Cash in Hand</CardTitle>
+                        <CardTitle className="text-sm font-medium text-blue-700">Cash in Hand (All Time)</CardTitle>
                         <Wallet className="h-4 w-4 text-blue-600" />
                     </CardHeader>
                     <CardContent>
-                        <div className={`text-2xl font-bold ${summary.cashBalance < 0 ? 'text-red-700' : 'text-blue-700'}`}>
-                            ₹{summary.cashBalance.toFixed(2)}
+                        <div className={`text-2xl font-bold ${eventSummary.cashBalance < 0 ? 'text-red-700' : 'text-blue-700'}`}>
+                            ₹{Math.round(eventSummary.cashBalance).toLocaleString('en-IN')}
                         </div>
-                        <p className="text-xs text-blue-600 mt-1">
-                            Opening + Cash Income - Cash Expense
-                        </p>
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* DAILY Summary (Sub Cards) */}
+            <h2 className="text-xl font-semibold text-gray-800">Daily Overview ({new Date(date).toLocaleDateString()})</h2>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <Card className="bg-white border-gray-200">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-gray-600">Daily Income</CardTitle>
+                        <ArrowUpCircle className="h-4 w-4 text-green-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-gray-900">₹{Math.round(dailySummary.income).toLocaleString('en-IN')}</div>
+                        <div className="flex gap-4 mt-1 text-xs text-gray-500">
+                            <div>Cash: <span className="font-semibold">₹{Math.round(dailySummary.cashIncome || 0).toLocaleString('en-IN')}</span></div>
+                            <div>UPI: <span className="font-semibold">₹{Math.round(dailySummary.upiIncome || 0).toLocaleString('en-IN')}</span></div>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="bg-white border-gray-200">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-gray-600">Daily Expense</CardTitle>
+                        <ArrowDownCircle className="h-4 w-4 text-red-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold text-gray-900">₹{Math.round(dailySummary.expense).toLocaleString('en-IN')}</div>
+                    </CardContent>
+                </Card>
+                <Card className="bg-white border-gray-200">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-gray-600">Daily Company Net</CardTitle>
+                        <Wallet className="h-4 w-4 text-purple-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className={`text-2xl font-bold ${dailySummary.companyBalance < 0 ? 'text-red-600' : 'text-purple-600'}`}>
+                            ₹{Math.round(dailySummary.companyBalance).toLocaleString('en-IN')}
+                        </div>
+                        <div className="flex flex-col gap-1 mt-2 text-xs text-gray-500 border-t pt-2">
+                            <div className="flex justify-between"><span>Amusement:</span> <span className="font-semibold">₹{Math.round(dailySummary.upiAmusement || 0).toLocaleString('en-IN')}</span></div>
+                            <div className="flex justify-between"><span>Entrance:</span> <span className="font-semibold">₹{Math.round(dailySummary.upiEntrance || 0).toLocaleString('en-IN')}</span></div>
+                            <div className="flex justify-between"><span>Office:</span> <span className="font-semibold">₹{Math.round(dailySummary.upiOffice || 0).toLocaleString('en-IN')}</span></div>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="bg-white border-gray-200">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium text-gray-600">Daily Cash Net</CardTitle>
+                        <Wallet className="h-4 w-4 text-blue-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className={`text-2xl font-bold ${dailySummary.cashBalance < 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                            ₹{Math.round(dailySummary.cashBalance).toLocaleString('en-IN')}
+                        </div>
                     </CardContent>
                 </Card>
             </div>
@@ -97,7 +137,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
             {/* Transactions Table for Selected Date */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Transactions ({new Date(date).toLocaleDateString()})</CardTitle>
+                    <CardTitle>Transactions List</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="overflow-x-auto">
@@ -138,7 +178,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                                             </td>
                                             <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold text-right ${tx.type === 'Income' ? 'text-green-600' : 'text-red-600'
                                                 }`}>
-                                                ₹{tx.amount.toFixed(2)}
+                                                ₹{Math.round(tx.amount).toLocaleString('en-IN')}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
                                                 {tx.recordedBy || '-'}
@@ -215,7 +255,7 @@ async function RecentActivitySection() {
                                         </td>
                                         <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold text-right ${tx.type === 'Income' ? 'text-green-600' : 'text-red-600'
                                             }`}>
-                                            ₹{tx.amount.toFixed(2)}
+                                            ₹{Math.round(tx.amount).toLocaleString('en-IN')}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
                                             {tx.recordedBy || '-'}

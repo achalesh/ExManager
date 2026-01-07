@@ -29,10 +29,10 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { assignTicketsToStaff, settleStaffAssignment, undoStaffAssignment, assignTicketStock, updateStaffAssignment, undoSettlement } from '@/app/ticketing-actions';
+import { assignTicketsToStaff, settleStaffAssignment, undoStaffAssignment, assignTicketStock, updateStaffAssignment, undoSettlement, finalizeStaffSettlement } from '@/app/ticketing-actions';
 import { getUPIMachines } from '@/app/upi-actions';
 import { useRouter } from 'next/navigation';
-import { Plus, ArrowRightLeft, Users, AlertCircle, Download, Pencil, Trash2, Calendar, IndianRupee, RotateCcw } from 'lucide-react';
+import { Plus, ArrowRightLeft, Users, AlertCircle, Download, Pencil, Trash2, Calendar, IndianRupee, RotateCcw, CheckCircle, FileText } from 'lucide-react';
 
 interface TicketType {
     id: number;
@@ -164,6 +164,7 @@ export function StaffAllocationInterface({
     // Bulk ASSIGN State
     const [openBulkAssign, setOpenBulkAssign] = useState(false);
     const [bulkAssignStaff, setBulkAssignStaff] = useState('');
+    const [bulkAssignStockStaff, setBulkAssignStockStaff] = useState<Record<number, string>>({});
     const [bulkAssignItem, setBulkAssignItem] = useState('');
     const [bulkAssignStockIds, setBulkAssignStockIds] = useState<number[]>([]);
     const [bulkAssignDate, setBulkAssignDate] = useState(todayStr); // todayStr from props
@@ -180,34 +181,43 @@ export function StaffAllocationInterface({
         : [];
 
     const handleBulkAssignSubmit = async () => {
-        if (!bulkAssignStaff || !bulkAssignItem || bulkAssignStockIds.length === 0) {
-            setBulkAssignError('Please select Staff, Ticket Type, and at least one Bundle.');
+        if ((!bulkAssignStaff && Object.keys(bulkAssignStockStaff).length === 0) || !bulkAssignItem || bulkAssignStockIds.length === 0) {
+            setBulkAssignError('Please select Ticket Type, at least one Bundle, and ensure Staff is assigned.');
             return;
         }
         setBulkAssignLoading(true);
         setBulkAssignError('');
 
         // Prepare payload
-        // We need quantity for each bundle.
-        // Assuming we assign the FULL bundle?
-        // Wait, regular assignment asks for "Quantity".
-        // But usually we assign whole remaining bundles.
-        // Let's assume we assign the WHOLE remaining quantity of the selected bundles.
+        const assignmentsPayload: any[] = [];
+        let missingStaff = false;
 
-        const assignmentsPayload = bulkAssignStockIds.map(invId => {
+        bulkAssignStockIds.forEach(invId => {
             const inv = inventory.find(i => i.id === invId);
-            if (!inv) return null;
-            return {
-                staffId: Number(bulkAssignStaff),
+            if (!inv) return;
+
+            const targetStaffId = bulkAssignStockStaff[invId] || bulkAssignStaff;
+            if (!targetStaffId) {
+                missingStaff = true;
+                return;
+            }
+
+            assignmentsPayload.push({
+                staffId: Number(targetStaffId),
                 ticketTypeId: Number(bulkAssignItem),
                 inventoryId: invId,
-                quantity: inv.currentNumber <= inv.endNumber ? (inv.endNumber - inv.currentNumber + 1) : 0, // Remaining Count
+                quantity: inv.currentNumber <= inv.endNumber ? (inv.endNumber - inv.currentNumber + 1) : 0,
                 assignedDate: bulkAssignDate,
                 assignedUpiMachineId: bulkAssignUpiMachine === '0' ? undefined : Number(bulkAssignUpiMachine)
-            };
-        }).filter(Boolean) as any[];
+            });
+        });
 
-        // Check for 0 quantity
+        if (missingStaff) {
+            setBulkAssignError('Some selected bundles do not have a staff member assigned.');
+            setBulkAssignLoading(false);
+            return;
+        }
+
         const validPayload = assignmentsPayload.filter(a => a.quantity > 0);
 
         if (validPayload.length === 0) {
@@ -221,6 +231,7 @@ export function StaffAllocationInterface({
         if (res.success) {
             setOpenBulkAssign(false);
             setBulkAssignStockIds([]);
+            setBulkAssignStockStaff({});
             router.refresh();
         } else {
             setBulkAssignError(res.error || 'Failed to assign');
@@ -232,6 +243,11 @@ export function StaffAllocationInterface({
         setBulkAssignStockIds(prev =>
             prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
         );
+        // Clean up staff map if deselected? Optional.
+    };
+
+    const updateBundleStaff = (invId: number, staffId: string) => {
+        setBulkAssignStockStaff(prev => ({ ...prev, [invId]: staffId }));
     };
 
     // Bulk Settle State
@@ -591,7 +607,34 @@ export function StaffAllocationInterface({
     };
 
     const activeAssignments = assignments.filter(a => a.status === 'Assigned');
-    const pastAssignments = assignments.filter(a => ['Returned', 'Settled'].includes(a.status));
+    const returnedAssignments = assignments.filter(a => a.status === 'Returned');
+    const settledAssignments = assignments.filter(a => a.status === 'Settled');
+
+    const handleFinalizeSettlement = async (id: number) => {
+        if (!confirm('Resolve this shortage/excess and mark as finalized?')) return;
+        setLoading(true);
+        const res = await finalizeStaffSettlement(id);
+        if (res.success) router.refresh();
+        else alert(res.error);
+        setLoading(false);
+    };
+
+    const getStaffBalances = () => {
+        const balances: Record<string, { name: string, short: number, excess: number }> = {};
+        // Only include Returned (Pending Settle) and Settled?
+        // User said "keep a record of Short/Excess". Assuming all non-active.
+        [...returnedAssignments, ...settledAssignments].forEach(a => {
+            const diff = a.difference || 0;
+            if (diff === 0) return;
+            if (!balances[a.staffId]) balances[a.staffId] = { name: a.staff.name, short: 0, excess: 0 };
+
+            if (diff < 0) balances[a.staffId].short += Math.abs(diff);
+            else balances[a.staffId].excess += diff;
+        });
+        return Object.values(balances);
+    };
+
+    const [openBalanceReport, setOpenBalanceReport] = useState(false);
 
     // Group Active Assignments
     const groupActiveAssignments = (list: Assignment[]): GroupedAssignment[] => {
@@ -722,12 +765,14 @@ export function StaffAllocationInterface({
                 </div>
             </div>
 
-            <Tabs defaultValue="active">
+            <Tabs defaultValue="active-allocations">
+
+
                 <TabsList>
-                    <TabsTrigger value="active">Active Assignments ({activeAssignments.length})</TabsTrigger>
+                    <TabsTrigger value="active-allocations">Active Assignments ({activeAssignments.length})</TabsTrigger>
                     <TabsTrigger value="counter">Counter Allocation</TabsTrigger>
-                    <TabsTrigger value="history">Settlement History</TabsTrigger>
-                    <TabsTrigger value="all-history">Allocation History</TabsTrigger>
+                    <TabsTrigger value="returned-history">Returned History ({returnedAssignments.length})</TabsTrigger>
+                    <TabsTrigger value="all-history">Settlement History</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="counter">
@@ -803,13 +848,23 @@ export function StaffAllocationInterface({
                     </div>
                 </TabsContent>
 
-                <TabsContent value="active" className="space-y-4">
-                    <div className="flex items-center gap-4 mb-2">
-                        {selectedAssignmentIds.length > 0 && (
-                            <Button size="sm" onClick={handleBulkSettleClick} className="bg-green-600 hover:bg-green-700 text-white">
-                                Settle Selected ({selectedAssignmentIds.length})
+                <TabsContent value="active-allocations">
+                    <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center gap-2">
+                            {selectedAssignmentIds.length > 0 && (
+                                <Button size="sm" onClick={handleBulkSettleClick} className="bg-green-600 hover:bg-green-700 text-white gap-2">
+                                    <CheckCircle className="h-4 w-4" /> Return Selected ({selectedAssignmentIds.length})
+                                </Button>
+                            )}
+                        </div>
+                        <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => setOpenBalanceReport(true)}>
+                                <FileText className="h-4 w-4 mr-2" /> Staff Balances
                             </Button>
-                        )}
+                            <Button variant="outline" size="sm" onClick={handleExportAllocations} className="gap-2">
+                                <Download className="h-4 w-4" /> Download CSV
+                            </Button>
+                        </div>
                     </div>
                     <div className="border rounded-md bg-white">
                         <Table>
@@ -918,7 +973,7 @@ export function StaffAllocationInterface({
                                                         setOpenBulkSettle(true);
                                                     }}
                                                 >
-                                                    Settle
+                                                    Settle / Return
                                                 </Button>
                                             </TableCell>
                                         </TableRow>
@@ -936,7 +991,7 @@ export function StaffAllocationInterface({
                     </div>
                 </TabsContent>
 
-                <TabsContent value="history">
+                <TabsContent value="all-history">
                     <div className="flex justify-end mb-2">
                         <Button variant="outline" size="sm" onClick={handleExportSettlements} className="gap-2">
                             <Download className="h-4 w-4" /> Download CSV
@@ -956,7 +1011,7 @@ export function StaffAllocationInterface({
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {pastAssignments.map(assign => (
+                                {settledAssignments.map(assign => (
                                     <TableRow key={assign.id}>
                                         <TableCell className="font-medium">{assign.staff.name}</TableCell>
                                         <TableCell>{assign.ticketType.name}</TableCell>
@@ -988,45 +1043,63 @@ export function StaffAllocationInterface({
                     </div>
                 </TabsContent>
 
-                <TabsContent value="all-history">
-                    <div className="flex justify-end mb-2">
-                        <Button variant="outline" size="sm" onClick={handleExportAllocations} className="gap-2">
-                            <Download className="h-4 w-4" /> Download CSV
-                        </Button>
-                    </div>
+                <TabsContent value="returned-history">
                     <div className="border rounded-md bg-white">
                         <Table>
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Staff Name</TableHead>
                                     <TableHead>Item</TableHead>
-                                    <TableHead>Assigned Date</TableHead>
-                                    <TableHead>Assigned Qty</TableHead>
-                                    <TableHead>Series</TableHead>
-                                    <TableHead>Status</TableHead>
+                                    <TableHead>Return Date</TableHead>
+                                    <TableHead>Sold / Total</TableHead>
+                                    <TableHead>Short / Excess</TableHead>
+                                    <TableHead className="text-right">Action</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {assignments.map(assign => (
-                                    <TableRow key={assign.id}>
-                                        <TableCell className="font-medium">{assign.staff.name}</TableCell>
-                                        <TableCell>{assign.ticketType.name}</TableCell>
-                                        <TableCell className="text-sm text-gray-500">
-                                            {new Date(assign.assignedDate).toLocaleDateString('en-GB')}
-                                        </TableCell>
-                                        <TableCell>{assign.assignedCount}</TableCell>
-                                        <TableCell className="font-mono text-sm">
-                                            {assign.seriesLabel} (#{assign.startNumber}-{assign.endNumber})
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge variant={assign.status === 'Assigned' ? 'default' : 'secondary'}>{assign.status}</Badge>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                                {returnedAssignments.map(assign => {
+                                    const diff = assign.difference || 0;
+                                    return (
+                                        <TableRow key={assign.id}>
+                                            <TableCell className="font-medium">{assign.staff.name}</TableCell>
+                                            <TableCell>{assign.ticketType.name}</TableCell>
+                                            <TableCell className="text-sm text-gray-500">
+                                                {assign.returnDate ? new Date(assign.returnDate).toLocaleDateString('en-GB') : '-'}
+                                            </TableCell>
+                                            <TableCell>{assign.soldCount} / {assign.assignedCount}</TableCell>
+                                            <TableCell>
+                                                {diff === 0 ? (
+                                                    <span className="text-gray-400">-</span>
+                                                ) : diff < 0 ? (
+                                                    <span className="text-red-600 font-bold">Short: ₹{Math.abs(diff)}</span>
+                                                ) : (
+                                                    <span className="text-green-600 font-bold">Excess: ₹{diff}</span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-right flex justify-end gap-2">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                                    title="Undo Return"
+                                                    onClick={() => handleUndoSettlement(assign.id)}
+                                                >
+                                                    <RotateCcw className="h-4 w-4" />
+                                                </Button>
+                                                <Button size="sm" onClick={() => handleFinalizeSettlement(assign.id)}>
+                                                    <CheckCircle className="h-4 w-4 mr-1" /> Settle
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
+                                {returnedAssignments.length === 0 && <TableRow><TableCell colSpan={6} className="text-center p-4">No pending returns.</TableCell></TableRow>}
                             </TableBody>
                         </Table>
                     </div>
                 </TabsContent>
+
+
             </Tabs>
 
             {/* ASSIGN DIALOG */}
@@ -1171,6 +1244,36 @@ export function StaffAllocationInterface({
                             <Button type="submit" disabled={loading}>Assign</Button>
                         </DialogFooter>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* STAFF BALANCE DIALOG */}
+            <Dialog open={openBalanceReport} onOpenChange={setOpenBalanceReport}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Staff Account Balances</DialogTitle>
+                    </DialogHeader>
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Staff Name</TableHead>
+                                <TableHead className="text-red-600">Total Shortage</TableHead>
+                                <TableHead className="text-green-600">Total Excess</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {getStaffBalances().map((b, i) => (
+                                <TableRow key={i}>
+                                    <TableCell className="font-bold">{b.name}</TableCell>
+                                    <TableCell className="text-red-600 font-mono">₹{b.short}</TableCell>
+                                    <TableCell className="text-green-600 font-mono">₹{b.excess}</TableCell>
+                                </TableRow>
+                            ))}
+                            {getStaffBalances().length === 0 && (
+                                <TableRow><TableCell colSpan={3} className="text-center text-gray-500">No discrepancies found.</TableCell></TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
                 </DialogContent>
             </Dialog>
 
@@ -1550,7 +1653,7 @@ export function StaffAllocationInterface({
 
             {/* BULK ASSIGN DIALOG */}
             <Dialog open={openBulkAssign} onOpenChange={setOpenBulkAssign}>
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Bulk Assign Bundles</DialogTitle>
                     </DialogHeader>
@@ -1560,23 +1663,26 @@ export function StaffAllocationInterface({
                     <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Select Staff</Label>
-                                <Select value={bulkAssignStaff} onValueChange={setBulkAssignStaff}>
+                                <Label>Default Staff (Optional)</Label>
+                                <Select value={bulkAssignStaff} onValueChange={(val) => setBulkAssignStaff(val === "none" ? "" : val)}>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Select Staff" />
+                                        <SelectValue placeholder="Select Default Staff" />
                                     </SelectTrigger>
                                     <SelectContent>
+                                        <SelectItem value="none">-- None --</SelectItem>
                                         {staffList.filter(s => s.department === 'Booking').map(s => (
                                             <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
+                                <p className="text-xs text-gray-500">Applied to bundles without specific staff selected.</p>
                             </div>
                             <div className="space-y-2">
                                 <Label>Ticket Type</Label>
                                 <Select value={bulkAssignItem} onValueChange={(val) => {
                                     setBulkAssignItem(val);
                                     setBulkAssignStockIds([]); // Reset selection when type changes
+                                    setBulkAssignStockStaff({});
                                 }}>
                                     <SelectTrigger>
                                         <SelectValue placeholder="Select Item" />
@@ -1590,23 +1696,67 @@ export function StaffAllocationInterface({
                             </div>
                         </div>
 
-                        <div className="border rounded-md p-2 h-[200px] overflow-y-auto bg-slate-50">
-                            <Label className="mb-2 block">Select Bundles (Available: {bulkCompatibleStock.length})</Label>
-                            {bulkAssignItem && bulkCompatibleStock.length === 0 && <p className="text-gray-400 text-sm">No available stock found for this item.</p>}
+                        <div className="border rounded-md min-h-[300px] max-h-[45vh] overflow-y-auto bg-slate-50 flex flex-col">
+                            <div className="p-2 border-b bg-gray-100 flex font-semibold text-xs text-gray-500 sticky top-0 z-10">
+                                <div className="w-8"></div>
+                                <div className="flex-1">Bundle Info</div>
+                                <div className="w-20 text-center">Qty</div>
+                                <div className="w-48">Assign To</div>
+                            </div>
 
-                            <div className="space-y-1">
-                                {bulkCompatibleStock.map(inv => (
-                                    <div key={inv.id} className="flex items-center space-x-2 p-2 bg-white rounded border hover:bg-gray-50 cursor-pointer" onClick={() => toggleBulkStock(inv.id)}>
-                                        <Checkbox
-                                            checked={bulkAssignStockIds.includes(inv.id)}
-                                            onCheckedChange={() => toggleBulkStock(inv.id)}
-                                        />
-                                        <div className="flex-1 flex justify-between text-sm">
-                                            <span>{inv.seriesLabel} (#{inv.currentNumber} - #{inv.endNumber})</span>
-                                            <Badge variant="secondary">{inv.endNumber - inv.currentNumber + 1} tix</Badge>
+                            <div className="flex-1 p-2 space-y-1">
+                                <Label className="mb-2 block sr-only">Select Bundles (Available: {bulkCompatibleStock.length})</Label>
+                                {bulkAssignItem && bulkCompatibleStock.length === 0 && <p className="text-gray-400 text-sm p-4 text-center">No available stock found for this item.</p>}
+
+                                {bulkCompatibleStock.map(inv => {
+                                    const isSelected = bulkAssignStockIds.includes(inv.id);
+                                    const assignedStaffId = bulkAssignStockStaff[inv.id] || bulkAssignStaff;
+
+                                    return (
+                                        <div key={inv.id} className={`flex items-center space-x-2 p-2 rounded border ${isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white hover:bg-gray-50'}`}>
+                                            <div className="flex h-full items-center justify-center w-8">
+                                                <Checkbox
+                                                    checked={isSelected}
+                                                    onCheckedChange={() => toggleBulkStock(inv.id)}
+                                                />
+                                            </div>
+                                            <div className="flex-1 text-sm cursor-pointer" onClick={() => toggleBulkStock(inv.id)}>
+                                                <div className="font-medium text-gray-900">{inv.seriesLabel}</div>
+                                                <div className="text-gray-500 text-xs text-nowrap">#{inv.currentNumber} - #{inv.endNumber}</div>
+                                            </div>
+                                            <div className="w-20 text-center">
+                                                <Badge variant="secondary">{inv.endNumber - inv.currentNumber + 1}</Badge>
+                                            </div>
+                                            <div className="w-48">
+                                                <Select
+                                                    value={bulkAssignStockStaff[inv.id] || (isSelected && bulkAssignStaff ? bulkAssignStaff : "none")}
+                                                    onValueChange={(val) => {
+                                                        if (!isSelected) toggleBulkStock(inv.id);
+                                                        // If val is "none", we want to clear the override AND potentially clear the selection? 
+                                                        // No, just set empty string in map if it's "none", which means "Default" (conceptually depends on usage).
+                                                        // Actually, if they select "Default" from the dropdown (which I'll rename to 'Use Default' or similar?), 
+                                                        // or if they want to explicitly unselect?
+                                                        // The original code had placeholder "Default".
+
+                                                        // Let's implement: "none" -> "" (which means use default logic if bulkAssignStaff is set, or invalid if not)
+                                                        updateBundleStaff(inv.id, val === "none" ? "" : val);
+                                                    }}
+                                                    disabled={!isSelected && !bulkAssignStaff && false}
+                                                >
+                                                    <SelectTrigger className="h-8 text-xs">
+                                                        <SelectValue placeholder="Default" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="none">-- Default / None --</SelectItem>
+                                                        {staffList.filter(s => s.department === 'Booking').map(s => (
+                                                            <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
 

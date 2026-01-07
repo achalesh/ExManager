@@ -1022,6 +1022,27 @@ export async function settleStaffAssignment(data: z.infer<typeof settlementSchem
     }
 }
 
+export async function finalizeStaffSettlement(assignmentId: number) {
+    const session = await getSession();
+    if (!session || !['Admin', 'Manager'].includes(session.roleName)) {
+        return { success: false, error: 'Unauthorized' };
+    }
+
+    try {
+        await prisma.staffTicketAssignment.update({
+            where: { id: assignmentId },
+            data: {
+                status: 'Settled',
+                isSettled: true
+            }
+        });
+        revalidatePath('/dashboard/ticketing');
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
 export async function getStaffAssignments(eventId: number) {
     // Return active and recent assignments
     return await prisma.staffTicketAssignment.findMany({
@@ -1264,23 +1285,26 @@ export async function bulkSettleAssignments(settlements: {
                                 currentNumber: returnStart,
                                 status: 'Available',
                                 price: assignment.ticketType.price,
-                                category: assignment.ticketType.category,
-                                // Optional: Set defaults if needed
+                                category: assignment.ticketType.category
                             }
                         });
                     }
                 }
 
+                const difference = (item.cashReceived + item.upiReceived) - totalAmount;
+
                 // 3. Update Assignment Status
                 await tx.staffTicketAssignment.update({
                     where: { id: item.assignmentId },
                     data: {
-                        status: 'Settled',
+                        status: 'Returned', // Moves to Pending Settle
+                        isSettled: false,
                         returnedCount: item.returnCount,
                         soldCount: soldCount,
                         totalAmount: totalAmount,
                         cashReceived: item.cashReceived,
                         upiReceived: item.upiReceived,
+                        difference: difference,
                         settlementDate: settleDate,
                         returnDate: settleDate
                     }
@@ -1376,6 +1400,8 @@ export async function bulkSettleAssignments(settlements: {
                     });
                 }
             }
+        }, {
+            timeout: 120000 // 2 minutes
         });
 
         revalidatePath('/dashboard/ticketing');
@@ -1401,7 +1427,7 @@ export async function undoSettlement(assignmentId: number) {
             });
 
             if (!assignment) throw new Error('Assignment not found');
-            if (assignment.status !== 'Settled') throw new Error('Assignment is not settled');
+            if (!['Settled', 'Returned'].includes(assignment.status)) throw new Error('Assignment is not settled or returned');
 
             // 1. Check & Remove Returned Stock
             // Logic: If returnedCount > 0, we likely created a TicketInventory.

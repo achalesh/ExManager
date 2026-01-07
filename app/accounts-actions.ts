@@ -284,9 +284,80 @@ export async function getDailyTransactions(dateString?: string) {
             }
         });
 
+        // --- Event Total Aggregation (All Time) ---
+        // 1. Manual Transactions
+        // @ts-ignore
+        const eventManual = await prisma.transaction.findMany({
+            where: { eventId },
+            select: { type: true, amount: true, paymentMethod: true }
+        });
+
+        let evManualCashInc = 0, evManualUpiInc = 0, evManualCashExp = 0, evManualUpiExp = 0;
+        eventManual.forEach((t: any) => {
+            if (t.type === 'Income') {
+                if (t.paymentMethod === 'Cash') evManualCashInc += t.amount;
+                else evManualUpiInc += t.amount;
+            } else {
+                if (t.paymentMethod === 'Cash') evManualCashExp += t.amount;
+                else evManualUpiExp += t.amount;
+            }
+        });
+
+        // 2. Payments (Income)
+        const eventPayments = await prisma.payment.findMany({
+            where: {
+                OR: [
+                    { invoice: { eventId } },
+                    { invoiceId: null, exhibitor: { bookings: { some: { eventId } } } }
+                ]
+            },
+            select: { amount: true, paymentMethod: true }
+        });
+        let evPayCash = 0, evPayUpi = 0;
+        eventPayments.forEach((p: any) => {
+            if (p.paymentMethod === 'Cash') evPayCash += p.amount;
+            else evPayUpi += p.amount;
+        });
+
+        // 3. Counter Sales (Cash Income)
+        const eventCounter = await prisma.ticketSale.aggregate({
+            _sum: { totalAmount: true },
+            where: {
+                eventId,
+                // @ts-ignore
+                source: 'Counter'
+            }
+        });
+        const evCounterCash = eventCounter._sum.totalAmount || 0;
+
+        // 4. Staff Returns (Cash & UPI Income)
+        const eventSettlements = await prisma.staffTicketAssignment.aggregate({
+            _sum: { cashReceived: true, upiReceived: true },
+            where: {
+                staff: { eventId },
+                status: 'Returned'
+            }
+        });
+        const evSettleCash = eventSettlements._sum.cashReceived || 0;
+        const evSettleUpi = eventSettlements._sum.upiReceived || 0;
+
+        // Summation
+        const evTotalIncome = (evManualCashInc + evManualUpiInc) + (evPayCash + evPayUpi) + evCounterCash + (evSettleCash + evSettleUpi);
+        const evTotalExpense = (evManualCashExp + evManualUpiExp);
+        const evCashInHand = (evManualCashInc + evPayCash + evCounterCash + evSettleCash) - evManualCashExp; // Cash Income - Cash Expense
+        const evCompanyBal = (evManualUpiInc + evPayUpi + evSettleUpi) - evManualUpiExp; // UPI Income - UPI Expense
+
+        const eventSummary = {
+            income: evTotalIncome,
+            expense: evTotalExpense,
+            balance: evTotalIncome - evTotalExpense,
+            cashBalance: evCashInHand,
+            companyBalance: evCompanyBal
+        };
+
         return {
             transactions: merged.slice(0, 20),
-            summary: {
+            dailySummary: { // Renamed from summary
                 income: summary.income,
                 expense: summary.expense,
                 balance: summary.income - summary.expense,
@@ -294,12 +365,13 @@ export async function getDailyTransactions(dateString?: string) {
                 cashExpense,
                 upiIncome,
                 upiExpense,
-                cashBalance: cashIncome - cashExpense, // Cash in Hand
-                companyBalance: upiIncome - upiExpense, // Bank Balance increase
+                cashBalance: cashIncome - cashExpense,
+                companyBalance: upiIncome - upiExpense,
                 upiAmusement,
                 upiEntrance,
                 upiOffice
-            }
+            },
+            eventSummary
         };
 
     } catch (error) {
@@ -464,5 +536,134 @@ export async function deleteTransaction(id: number) {
     } catch (error) {
         console.error('Delete error:', error);
         return { success: false, error: 'Failed to delete transaction' };
+    }
+}
+
+export async function getAmusementLedger(ownerId: string) {
+    const session = await getSession();
+    if (!session) return { ledger: [], summary: { totalCredit: 0, totalDebit: 0, balance: 0 } };
+
+    try {
+        // Query the dedicated Ledger table
+        // @ts-ignore
+        const entries = await prisma.amusementLedger.findMany({
+            where: { amusementOwnerId: Number(ownerId) },
+            orderBy: { date: 'desc' },
+            include: { ticketType: true }
+        });
+
+        const ledger = entries.map((entry: any) => ({
+            id: entry.id,
+            date: entry.date,
+            description: entry.details || `Ticket Share: ${entry.ticketType?.name}`,
+            credit: entry.ownerShareAmount, // Amount owed TO owner
+            debit: entry.collectedByOwner,  // Amount collected/paid
+            type: entry.ownerShareAmount > 0 ? 'Credit' : 'Debit'
+        }));
+
+        const totalCredit = entries.reduce((sum: number, e: any) => sum + (e.ownerShareAmount || 0), 0);
+        const totalDebit = entries.reduce((sum: number, e: any) => sum + (e.collectedByOwner || 0), 0);
+
+        return {
+            ledger,
+            summary: {
+                totalCredit,
+                totalDebit,
+                balance: totalCredit - totalDebit
+            }
+        };
+
+    } catch (error) {
+        console.error("Error fetching amusement ledger:", error);
+        return { ledger: [], summary: { totalCredit: 0, totalDebit: 0, balance: 0 } };
+    }
+}
+
+export async function getEventLedger(activeEventId?: string) {
+    const session = await getSession();
+    if (!session) return { transactions: [], summary: { income: 0, expense: 0, balance: 0, cashBalance: 0, companyBalance: 0 } };
+
+    const eventId = Number(activeEventId || session.activeEventId);
+    if (!eventId || isNaN(eventId)) return { transactions: [], summary: { income: 0, expense: 0, balance: 0, cashBalance: 0, companyBalance: 0 } };
+
+    try {
+        // Reuse getRecentTransactions login but with higher limit or all
+        // For efficiency, let's limit to recent 100 for now, or implement pagination in UI later.
+        const recent = await getRecentTransactions(100);
+
+        // Fetch Event Totals (reuse logic from getDailyTransactions or extract it)
+        // Since getDailyTransactions calculates it, we can call it with today's date but ignore daily part?
+        // No, better to extract the logic to a helper or just re-run the aggregate queries here.
+
+        // --- Event Total Aggregation (All Time) ---
+        // 1. Manual Transactions
+        // @ts-ignore
+        const eventManual = await prisma.transaction.findMany({
+            where: { eventId },
+            select: { type: true, amount: true, paymentMethod: true }
+        });
+
+        let evManualCashInc = 0, evManualUpiInc = 0, evManualCashExp = 0, evManualUpiExp = 0;
+        eventManual.forEach((t: any) => {
+            if (t.type === 'Income') {
+                if (t.paymentMethod === 'Cash') evManualCashInc += t.amount;
+                else evManualUpiInc += t.amount;
+            } else {
+                if (t.paymentMethod === 'Cash') evManualCashExp += t.amount;
+                else evManualUpiExp += t.amount;
+            }
+        });
+
+        // 2. Payments (Income)
+        const eventPayments = await prisma.payment.findMany({
+            where: {
+                OR: [
+                    { invoice: { eventId } },
+                    { invoiceId: null, exhibitor: { bookings: { some: { eventId } } } }
+                ]
+            },
+            select: { amount: true, paymentMethod: true }
+        });
+        let evPayCash = 0, evPayUpi = 0;
+        eventPayments.forEach((p: any) => {
+            if (p.paymentMethod === 'Cash') evPayCash += p.amount;
+            else evPayUpi += p.amount;
+        });
+
+        // 3. Counter Sales (Cash Income)
+        const eventCounter = await prisma.ticketSale.aggregate({
+            _sum: { totalAmount: true },
+            where: { eventId, source: 'Counter' } as any
+        });
+        const evCounterCash = eventCounter._sum.totalAmount || 0;
+
+        // 4. Staff Returns (Cash & UPI Income)
+        const eventSettlements = await prisma.staffTicketAssignment.aggregate({
+            _sum: { cashReceived: true, upiReceived: true },
+            where: { staff: { eventId }, status: 'Returned' }
+        });
+        const evSettleCash = (eventSettlements._sum && eventSettlements._sum.cashReceived) || 0;
+        const evSettleUpi = (eventSettlements._sum && eventSettlements._sum.upiReceived) || 0;
+
+        // Summation
+        const evTotalIncome = (evManualCashInc + evManualUpiInc) + (evPayCash + evPayUpi) + evCounterCash + (evSettleCash + evSettleUpi);
+        const evTotalExpense = (evManualCashExp + evManualUpiExp);
+        const evCashInHand = (evManualCashInc + evPayCash + evCounterCash + evSettleCash) - evManualCashExp;
+        const evCompanyBal = (evManualUpiInc + evPayUpi + evSettleUpi) - evManualUpiExp;
+
+        return {
+            transactions: recent, // Using recent for the list view
+            summary: {
+                income: evTotalIncome,
+                expense: evTotalExpense,
+                balance: evTotalIncome - evTotalExpense,
+                cashBalance: evCashInHand,
+                companyBalance: evCompanyBal
+            }
+        };
+
+    } catch (e) {
+        console.error("Error fetching event ledger", e);
+        return { transactions: [], summary: { income: 0, expense: 0, balance: 0, cashBalance: 0, companyBalance: 0 } };
     }
 }

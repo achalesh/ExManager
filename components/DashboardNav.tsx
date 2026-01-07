@@ -24,7 +24,8 @@ import {
     IndianRupee,
     RotateCcw,
     ArrowRightLeft,
-    FileText
+    FileText,
+    Building
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -79,9 +80,14 @@ export function DashboardNav({ session }: DashboardNavProps) {
     const operationsItems = [
         { href: '/dashboard/register-exhibitor', label: 'Register Exhibitor', icon: UserPlus, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/exhibitors', label: 'Exhibitor List', icon: Users, roles: ['Admin', 'Manager', 'Accounts'] },
-        { href: '/dashboard/payments', label: 'Payment Collection', icon: IndianRupee, roles: ['Admin', 'Manager', 'Accounts'] },
-        { href: '/dashboard/accounts', label: 'Daily Accounts', icon: Receipt, roles: ['Admin', 'Manager', 'Accounts'] },
         { href: '/dashboard/staff', label: 'Event Staff', icon: Users, roles: ['Admin', 'Manager'] },
+    ];
+
+    const accountItems = [
+        { href: '/dashboard/accounts/daybook', label: 'Daybook', icon: Receipt, roles: ['Admin', 'Manager', 'Accounts'] },
+        { href: '/dashboard/accounts/payments', label: 'Payment Collection', icon: IndianRupee, roles: ['Admin', 'Manager', 'Accounts'] },
+        { href: '/dashboard/accounts/ledger/amusement', label: 'Amusement Ledger', icon: Ticket, roles: ['Admin', 'Manager', 'Accounts'] },
+        { href: '/dashboard/accounts/ledger/company', label: 'Company Ledger', icon: Building, roles: ['Admin', 'Manager', 'Accounts'] },
     ];
 
     const ticketingItems = [
@@ -124,6 +130,7 @@ export function DashboardNav({ session }: DashboardNavProps) {
     // Filter items based on role
     const filteredAllocation = allocationItems.filter(i => i.roles.includes(session.roleName));
     const filteredOperations = operationsItems.filter(i => i.roles.includes(session.roleName));
+    const filteredAccounts = accountItems.filter(i => i.roles.includes(session.roleName));
     const filteredTicketing = ticketingItems.filter(i => i.roles.includes(session.roleName));
     const filteredReports = reportItems.filter(i => i.roles.includes(session.roleName));
 
@@ -207,6 +214,34 @@ export function DashboardNav({ session }: DashboardNavProps) {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
                                     {filteredOperations.map(item => (
+                                        <DropdownMenuItem key={item.href} asChild>
+                                            <Link href={item.href} className="flex items-center gap-2">
+                                                <item.icon className="h-4 w-4" />
+                                                {item.label}
+                                            </Link>
+                                        </DropdownMenuItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
+
+                        {/* Accounts Dropdown */}
+                        {filteredAccounts.length > 0 && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={`flex items-center gap-1 ${accountItems.some(i => pathname.startsWith(i.href)) ? 'bg-indigo-50 text-indigo-700' : ''}`}
+                                        suppressHydrationWarning
+                                    >
+                                        <Receipt className="h-4 w-4" />
+                                        <span>Accounts</span>
+                                        <ChevronDown className="h-3 w-3" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    {filteredAccounts.map(item => (
                                         <DropdownMenuItem key={item.href} asChild>
                                             <Link href={item.href} className="flex items-center gap-2">
                                                 <item.icon className="h-4 w-4" />
@@ -401,6 +436,19 @@ export function DashboardNav({ session }: DashboardNavProps) {
 
                         <div className="pt-2 pb-1 px-3 text-xs font-semibold text-gray-500 uppercase mt-2">Operations</div>
                         {operationsItems.map(item => (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                onClick={() => setMobileMenuOpen(false)}
+                                className="flex items-center gap-2 px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100"
+                            >
+                                <item.icon className="h-5 w-5" />
+                                {item.label}
+                            </Link>
+                        ))}
+
+                        <div className="pt-2 pb-1 px-3 text-xs font-semibold text-gray-500 uppercase mt-2">Accounts</div>
+                        {accountItems.map(item => (
                             <Link
                                 key={item.href}
                                 href={item.href}
