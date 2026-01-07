@@ -1185,6 +1185,9 @@ export async function bulkAssignTickets(assignments: {
                     }
                 });
             }
+        }, {
+            maxWait: 10000,
+            timeout: 60000
         });
 
         revalidatePath('/dashboard/ticketing');

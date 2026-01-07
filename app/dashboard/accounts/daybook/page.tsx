@@ -44,7 +44,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                         <ArrowUpCircle className="h-4 w-4 text-green-600" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-green-700">₹{Math.round(eventSummary.income).toLocaleString('en-IN')}</div>
+                        <div className="text-2xl font-bold text-green-700">₹{Math.round(eventSummary?.income || 0).toLocaleString('en-IN')}</div>
                     </CardContent>
                 </Card>
                 <Card className="bg-red-50 border-red-100">
@@ -53,7 +53,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                         <ArrowDownCircle className="h-4 w-4 text-red-600" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-red-700">₹{Math.round(eventSummary.expense).toLocaleString('en-IN')}</div>
+                        <div className="text-2xl font-bold text-red-700">₹{Math.round(eventSummary?.expense || 0).toLocaleString('en-IN')}</div>
                     </CardContent>
                 </Card>
                 <Card className="bg-purple-50 border-purple-100">
@@ -62,8 +62,8 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                         <Wallet className="h-4 w-4 text-purple-600" />
                     </CardHeader>
                     <CardContent>
-                        <div className={`text-2xl font-bold ${eventSummary.companyBalance < 0 ? 'text-red-700' : 'text-purple-700'}`}>
-                            ₹{Math.round(eventSummary.companyBalance).toLocaleString('en-IN')}
+                        <div className={`text-2xl font-bold ${(eventSummary?.companyBalance || 0) < 0 ? 'text-red-700' : 'text-purple-700'}`}>
+                            ₹{Math.round(eventSummary?.companyBalance || 0).toLocaleString('en-IN')}
                         </div>
                     </CardContent>
                 </Card>
@@ -73,8 +73,8 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                         <Wallet className="h-4 w-4 text-blue-600" />
                     </CardHeader>
                     <CardContent>
-                        <div className={`text-2xl font-bold ${eventSummary.cashBalance < 0 ? 'text-red-700' : 'text-blue-700'}`}>
-                            ₹{Math.round(eventSummary.cashBalance).toLocaleString('en-IN')}
+                        <div className={`text-2xl font-bold ${(eventSummary?.cashBalance || 0) < 0 ? 'text-red-700' : 'text-blue-700'}`}>
+                            ₹{Math.round(eventSummary?.cashBalance || 0).toLocaleString('en-IN')}
                         </div>
                     </CardContent>
                 </Card>
@@ -89,10 +89,10 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                         <ArrowUpCircle className="h-4 w-4 text-green-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-gray-900">₹{Math.round(dailySummary.income).toLocaleString('en-IN')}</div>
+                        <div className="text-2xl font-bold text-gray-900">₹{Math.round(dailySummary?.income || 0).toLocaleString('en-IN')}</div>
                         <div className="flex gap-4 mt-1 text-xs text-gray-500">
-                            <div>Cash: <span className="font-semibold">₹{Math.round(dailySummary.cashIncome || 0).toLocaleString('en-IN')}</span></div>
-                            <div>UPI: <span className="font-semibold">₹{Math.round(dailySummary.upiIncome || 0).toLocaleString('en-IN')}</span></div>
+                            <div>Cash: <span className="font-semibold">₹{Math.round(dailySummary?.cashIncome || 0).toLocaleString('en-IN')}</span></div>
+                            <div>UPI: <span className="font-semibold">₹{Math.round(dailySummary?.upiIncome || 0).toLocaleString('en-IN')}</span></div>
                         </div>
                     </CardContent>
                 </Card>
@@ -102,7 +102,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                         <ArrowDownCircle className="h-4 w-4 text-red-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-gray-900">₹{Math.round(dailySummary.expense).toLocaleString('en-IN')}</div>
+                        <div className="text-2xl font-bold text-gray-900">₹{Math.round(dailySummary?.expense || 0).toLocaleString('en-IN')}</div>
                     </CardContent>
                 </Card>
                 <Card className="bg-white border-gray-200">
@@ -111,13 +111,13 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                         <Wallet className="h-4 w-4 text-purple-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className={`text-2xl font-bold ${dailySummary.companyBalance < 0 ? 'text-red-600' : 'text-purple-600'}`}>
-                            ₹{Math.round(dailySummary.companyBalance).toLocaleString('en-IN')}
+                        <div className={`text-2xl font-bold ${(dailySummary?.companyBalance || 0) < 0 ? 'text-red-600' : 'text-purple-600'}`}>
+                            ₹{Math.round(dailySummary?.companyBalance || 0).toLocaleString('en-IN')}
                         </div>
                         <div className="flex flex-col gap-1 mt-2 text-xs text-gray-500 border-t pt-2">
-                            <div className="flex justify-between"><span>Amusement:</span> <span className="font-semibold">₹{Math.round(dailySummary.upiAmusement || 0).toLocaleString('en-IN')}</span></div>
-                            <div className="flex justify-between"><span>Entrance:</span> <span className="font-semibold">₹{Math.round(dailySummary.upiEntrance || 0).toLocaleString('en-IN')}</span></div>
-                            <div className="flex justify-between"><span>Office:</span> <span className="font-semibold">₹{Math.round(dailySummary.upiOffice || 0).toLocaleString('en-IN')}</span></div>
+                            <div className="flex justify-between"><span>Amusement:</span> <span className="font-semibold">₹{Math.round(dailySummary?.upiAmusement || 0).toLocaleString('en-IN')}</span></div>
+                            <div className="flex justify-between"><span>Entrance:</span> <span className="font-semibold">₹{Math.round(dailySummary?.upiEntrance || 0).toLocaleString('en-IN')}</span></div>
+                            <div className="flex justify-between"><span>Office:</span> <span className="font-semibold">₹{Math.round(dailySummary?.upiOffice || 0).toLocaleString('en-IN')}</span></div>
                         </div>
                     </CardContent>
                 </Card>
@@ -127,8 +127,8 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                         <Wallet className="h-4 w-4 text-blue-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className={`text-2xl font-bold ${dailySummary.cashBalance < 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                            ₹{Math.round(dailySummary.cashBalance).toLocaleString('en-IN')}
+                        <div className={`text-2xl font-bold ${(dailySummary?.cashBalance || 0) < 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                            ₹{Math.round(dailySummary?.cashBalance || 0).toLocaleString('en-IN')}
                         </div>
                     </CardContent>
                 </Card>

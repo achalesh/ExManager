@@ -162,76 +162,114 @@ export function StaffAllocationInterface({
     const [loadingBatch, setLoadingBatch] = useState(false);
 
     // Bulk ASSIGN State
+    // Bulk ASSIGN Queue State
     const [openBulkAssign, setOpenBulkAssign] = useState(false);
-    const [bulkAssignStaff, setBulkAssignStaff] = useState('');
-    const [bulkAssignStockStaff, setBulkAssignStockStaff] = useState<Record<number, string>>({});
-    const [bulkAssignItem, setBulkAssignItem] = useState('');
-    const [bulkAssignStockIds, setBulkAssignStockIds] = useState<number[]>([]);
-    const [bulkAssignDate, setBulkAssignDate] = useState(todayStr); // todayStr from props
-    const [bulkAssignUpiMachine, setBulkAssignUpiMachine] = useState('0'); // 0=Default, -1=Nil
+
+    // Header State
+    const [queueDate, setQueueDate] = useState(todayStr);
+    const [queueUpiMachine, setQueueUpiMachine] = useState('0'); // 0=Auto, -1=Nil
+
+    // Row Input State
+    const [queueStaff, setQueueStaff] = useState('');
+    const [queueItem, setQueueItem] = useState('');
+    const [queueInventoryId, setQueueInventoryId] = useState('');
+
+    // The Queue
+    interface PendingAssignment {
+        tempId: number;
+        staffId: number;
+        staffName: string;
+        ticketTypeId: number;
+        ticketTypeName: string;
+        inventoryId: number;
+        seriesLabel: string;
+        quantity: number; // calculated from stock
+        assignedDate: string;
+        upiMachineId?: number; // defaulting to auto (undefined) for now, or add UI
+    }
+    const [pendingAssignments, setPendingAssignments] = useState<PendingAssignment[]>([]);
+
     const [bulkAssignLoading, setBulkAssignLoading] = useState(false);
     const [bulkAssignError, setBulkAssignError] = useState('');
 
-    // Filter stock for Bulk Assign
-    const bulkCompatibleStock = bulkAssignItem
+    // Filter stock for Queue Input
+    const queueCompatibleStock = queueItem
         ? inventory.filter(inv => {
-            const type = items.find(i => i.id.toString() === bulkAssignItem);
-            return type && inv.status === 'Available' && inv.category === type.category && inv.price === type.price;
+            const type = items.find(i => i.id.toString() === queueItem);
+            // Must be available AND not already in queue
+            const inQueue = pendingAssignments.some(p => p.inventoryId === inv.id);
+            return !inQueue && type && inv.status === 'Available' && inv.category === type.category && inv.price === type.price;
         })
         : [];
 
+    const handleAddToQueue = () => {
+        if (!queueStaff || !queueItem || !queueInventoryId) return;
+
+        const staff = staffList.find(s => s.id.toString() === queueStaff);
+        const item = items.find(i => i.id.toString() === queueItem);
+        const inv = inventory.find(i => i.id.toString() === queueInventoryId);
+
+        if (!staff || !item || !inv) return;
+
+        const qty = inv.currentNumber <= inv.endNumber ? (inv.endNumber - inv.currentNumber + 1) : 0;
+
+        const newAssignment: PendingAssignment = {
+            tempId: Date.now(),
+            staffId: staff.id,
+            staffName: staff.name,
+            ticketTypeId: item.id,
+            ticketTypeName: item.name,
+            inventoryId: inv.id,
+            seriesLabel: `${inv.seriesLabel} (#${inv.currentNumber}-#${inv.endNumber})`,
+            quantity: qty,
+            assignedDate: queueDate,
+            upiMachineId: queueUpiMachine === '0' ? undefined : Number(queueUpiMachine)
+        };
+
+        setPendingAssignments(prev => [...prev, newAssignment]);
+
+        // Reset Inputs (keep Staff/Date? user said "show to add next assignment", likely wanting rapid entry)
+        // Let's clear Bundle, maybe keep Staff/Item? 
+        // User flow: "next line : staff Name, Ticket item, Ticket bundle" -> implies restarting?
+        // But usually removing friction is good. Let's clear Bundle only, easiest flow.
+        setQueueInventoryId('');
+        // setQueueItem(''); // Keep item? 
+        // setQueueStaff(''); // Keep staff?
+        // Let's clear everything to be safe based on "next line..." description implies a fresh row.
+        // Actually, let's clear Bundle and Item, keep Staff? 
+        // Let's clear Inventory ID only for now, assume they might adding multiple bundles for same staff/item.
+        // If they want to change staff, they can.
+    };
+
+    const handleRemoveFromQueue = (tempId: number) => {
+        setPendingAssignments(prev => prev.filter(p => p.tempId !== tempId));
+    };
+
     const handleBulkAssignSubmit = async () => {
-        if ((!bulkAssignStaff && Object.keys(bulkAssignStockStaff).length === 0) || !bulkAssignItem || bulkAssignStockIds.length === 0) {
-            setBulkAssignError('Please select Ticket Type, at least one Bundle, and ensure Staff is assigned.');
+        if (pendingAssignments.length === 0) {
+            setBulkAssignError('Queue is empty.');
             return;
         }
         setBulkAssignLoading(true);
         setBulkAssignError('');
 
-        // Prepare payload
-        const assignmentsPayload: any[] = [];
-        let missingStaff = false;
+        const assignmentsPayload = pendingAssignments.map(p => ({
+            staffId: p.staffId,
+            ticketTypeId: p.ticketTypeId,
+            inventoryId: p.inventoryId,
+            quantity: p.quantity,
+            assignedDate: p.assignedDate, // Each row has its date (from header at add time)
+            assignedUpiMachineId: p.upiMachineId
+        }));
 
-        bulkAssignStockIds.forEach(invId => {
-            const inv = inventory.find(i => i.id === invId);
-            if (!inv) return;
-
-            const targetStaffId = bulkAssignStockStaff[invId] || bulkAssignStaff;
-            if (!targetStaffId) {
-                missingStaff = true;
-                return;
-            }
-
-            assignmentsPayload.push({
-                staffId: Number(targetStaffId),
-                ticketTypeId: Number(bulkAssignItem),
-                inventoryId: invId,
-                quantity: inv.currentNumber <= inv.endNumber ? (inv.endNumber - inv.currentNumber + 1) : 0,
-                assignedDate: bulkAssignDate,
-                assignedUpiMachineId: bulkAssignUpiMachine === '0' ? undefined : Number(bulkAssignUpiMachine)
-            });
-        });
-
-        if (missingStaff) {
-            setBulkAssignError('Some selected bundles do not have a staff member assigned.');
-            setBulkAssignLoading(false);
-            return;
-        }
-
-        const validPayload = assignmentsPayload.filter(a => a.quantity > 0);
-
-        if (validPayload.length === 0) {
-            setBulkAssignError('Selected bundles have 0 remaining quantity.');
-            setBulkAssignLoading(false);
-            return;
-        }
-
-        const res = await import('@/app/ticketing-actions').then(m => m.bulkAssignTickets(validPayload));
+        const res = await import('@/app/ticketing-actions').then(m => m.bulkAssignTickets(assignmentsPayload));
 
         if (res.success) {
             setOpenBulkAssign(false);
-            setBulkAssignStockIds([]);
-            setBulkAssignStockStaff({});
+            setPendingAssignments([]);
+            setQueueInventoryId('');
+            setQueueItem('');
+            setQueueStaff('');
             router.refresh();
         } else {
             setBulkAssignError(res.error || 'Failed to assign');
@@ -239,16 +277,7 @@ export function StaffAllocationInterface({
         setBulkAssignLoading(false);
     };
 
-    const toggleBulkStock = (id: number) => {
-        setBulkAssignStockIds(prev =>
-            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-        );
-        // Clean up staff map if deselected? Optional.
-    };
 
-    const updateBundleStaff = (invId: number, staffId: string) => {
-        setBulkAssignStockStaff(prev => ({ ...prev, [invId]: staffId }));
-    };
 
     // Bulk Settle State
     const [selectedAssignmentIds, setSelectedAssignmentIds] = useState<number[]>([]);
@@ -754,9 +783,10 @@ export function StaffAllocationInterface({
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => {
-                        setBulkAssignStaff('');
-                        setBulkAssignItem('');
-                        setBulkAssignStockIds([]);
+                        setPendingAssignments([]);
+                        setQueueInventoryId('');
+                        setQueueItem('');
+                        setQueueStaff('');
                         setOpenBulkAssign(true);
                     }}>
                         Bulk Assign
@@ -1651,138 +1681,156 @@ export function StaffAllocationInterface({
                 </DialogContent>
             </Dialog>
 
-            {/* BULK ASSIGN DIALOG */}
+            {/* BULK ASSIGN QUEUE DIALOG */}
             <Dialog open={openBulkAssign} onOpenChange={setOpenBulkAssign}>
-                <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+                <DialogContent className="w-11/12 sm:max-w-7xl max-h-[85vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Bulk Assign Bundles</DialogTitle>
                     </DialogHeader>
 
                     {bulkAssignError && <div className="p-3 bg-red-50 text-red-600 rounded">{bulkAssignError}</div>}
 
-                    <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Default Staff (Optional)</Label>
-                                <Select value={bulkAssignStaff} onValueChange={(val) => setBulkAssignStaff(val === "none" ? "" : val)}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select Default Staff" />
+                    <div className="space-y-6">
+                        {/* Header: Date Selection */}
+                        <div className="flex items-center gap-4 bg-gray-50 p-3 rounded-md border text-sm">
+                            <Label className="font-semibold w-32">Assignment Date:</Label>
+                            <Input
+                                type="date"
+                                value={queueDate}
+                                max={todayStr}
+                                onChange={(e) => setQueueDate(e.target.value)}
+                                className="w-[180px] bg-white h-9"
+                            />
+                            <p className="text-gray-500 text-xs ml-2">Selected date applies to items added to queue.</p>
+
+                            <div className="w-px h-8 bg-gray-300 mx-2"></div>
+
+                            <Label className="font-semibold w-32">UPI Machine:</Label>
+                            <Select value={queueUpiMachine} onValueChange={setQueueUpiMachine}>
+                                <SelectTrigger className="w-[180px] bg-white h-9">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="0">Default (Auto)</SelectItem>
+                                    <SelectItem value="-1" className="text-red-500">Nil (No Machine)</SelectItem>
+                                    {upiMachines.map(m => <SelectItem key={m.id} value={m.id.toString()}>{m.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Input Row */}
+                        <div className="grid grid-cols-12 gap-2 items-end bg-blue-50 p-4 rounded-md border border-blue-200">
+                            <div className="col-span-3 space-y-1">
+                                <Label className="text-xs font-semibold text-blue-800">Staff Member</Label>
+                                <Select value={queueStaff} onValueChange={setQueueStaff}>
+                                    <SelectTrigger className="bg-white h-9 text-sm">
+                                        <SelectValue placeholder="Select Staff" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="none">-- None --</SelectItem>
-                                        {staffList.filter(s => s.department === 'Booking').map(s => (
+                                        {staffList.filter(s => s.department === 'Booking').sort((a, b) => a.name.localeCompare(b.name)).map(s => (
                                             <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                <p className="text-xs text-gray-500">Applied to bundles without specific staff selected.</p>
                             </div>
-                            <div className="space-y-2">
-                                <Label>Ticket Type</Label>
-                                <Select value={bulkAssignItem} onValueChange={(val) => {
-                                    setBulkAssignItem(val);
-                                    setBulkAssignStockIds([]); // Reset selection when type changes
-                                    setBulkAssignStockStaff({});
+
+                            <div className="col-span-3 space-y-1">
+                                <Label className="text-xs font-semibold text-blue-800">Ticket Item</Label>
+                                <Select value={queueItem} onValueChange={(val) => {
+                                    setQueueItem(val);
+                                    setQueueInventoryId('');
                                 }}>
-                                    <SelectTrigger>
+                                    <SelectTrigger className="bg-white h-9 text-sm">
                                         <SelectValue placeholder="Select Item" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {items.map(i => (
+                                        {[...items].sort((a, b) => a.name.localeCompare(b.name)).map(i => (
                                             <SelectItem key={i.id} value={i.id.toString()}>{i.name}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
-                        </div>
 
-                        <div className="border rounded-md min-h-[300px] max-h-[45vh] overflow-y-auto bg-slate-50 flex flex-col">
-                            <div className="p-2 border-b bg-gray-100 flex font-semibold text-xs text-gray-500 sticky top-0 z-10">
-                                <div className="w-8"></div>
-                                <div className="flex-1">Bundle Info</div>
-                                <div className="w-20 text-center">Qty</div>
-                                <div className="w-48">Assign To</div>
-                            </div>
-
-                            <div className="flex-1 p-2 space-y-1">
-                                <Label className="mb-2 block sr-only">Select Bundles (Available: {bulkCompatibleStock.length})</Label>
-                                {bulkAssignItem && bulkCompatibleStock.length === 0 && <p className="text-gray-400 text-sm p-4 text-center">No available stock found for this item.</p>}
-
-                                {bulkCompatibleStock.map(inv => {
-                                    const isSelected = bulkAssignStockIds.includes(inv.id);
-                                    const assignedStaffId = bulkAssignStockStaff[inv.id] || bulkAssignStaff;
-
-                                    return (
-                                        <div key={inv.id} className={`flex items-center space-x-2 p-2 rounded border ${isSelected ? 'bg-blue-50 border-blue-200' : 'bg-white hover:bg-gray-50'}`}>
-                                            <div className="flex h-full items-center justify-center w-8">
-                                                <Checkbox
-                                                    checked={isSelected}
-                                                    onCheckedChange={() => toggleBulkStock(inv.id)}
-                                                />
-                                            </div>
-                                            <div className="flex-1 text-sm cursor-pointer" onClick={() => toggleBulkStock(inv.id)}>
-                                                <div className="font-medium text-gray-900">{inv.seriesLabel}</div>
-                                                <div className="text-gray-500 text-xs text-nowrap">#{inv.currentNumber} - #{inv.endNumber}</div>
-                                            </div>
-                                            <div className="w-20 text-center">
-                                                <Badge variant="secondary">{inv.endNumber - inv.currentNumber + 1}</Badge>
-                                            </div>
-                                            <div className="w-48">
-                                                <Select
-                                                    value={bulkAssignStockStaff[inv.id] || (isSelected && bulkAssignStaff ? bulkAssignStaff : "none")}
-                                                    onValueChange={(val) => {
-                                                        if (!isSelected) toggleBulkStock(inv.id);
-                                                        // If val is "none", we want to clear the override AND potentially clear the selection? 
-                                                        // No, just set empty string in map if it's "none", which means "Default" (conceptually depends on usage).
-                                                        // Actually, if they select "Default" from the dropdown (which I'll rename to 'Use Default' or similar?), 
-                                                        // or if they want to explicitly unselect?
-                                                        // The original code had placeholder "Default".
-
-                                                        // Let's implement: "none" -> "" (which means use default logic if bulkAssignStaff is set, or invalid if not)
-                                                        updateBundleStaff(inv.id, val === "none" ? "" : val);
-                                                    }}
-                                                    disabled={!isSelected && !bulkAssignStaff && false}
-                                                >
-                                                    <SelectTrigger className="h-8 text-xs">
-                                                        <SelectValue placeholder="Default" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="none">-- Default / None --</SelectItem>
-                                                        {staffList.filter(s => s.department === 'Booking').map(s => (
-                                                            <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Assignment Date</Label>
-                                <Input type="date" value={bulkAssignDate} max={todayStr} onChange={(e) => setBulkAssignDate(e.target.value)} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Resulting UPI Machine</Label>
-                                <Select value={bulkAssignUpiMachine} onValueChange={setBulkAssignUpiMachine}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                            <div className="col-span-4 space-y-1">
+                                <Label className="text-xs font-semibold text-blue-800">Ticket Bundle</Label>
+                                <Select value={queueInventoryId} onValueChange={(val) => setQueueInventoryId(val === "none" ? "" : val)}>
+                                    <SelectTrigger className="bg-white h-9 text-sm">
+                                        <SelectValue placeholder={queueItem ? "Select Bundle" : "Select Item first"} />
+                                    </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="0">Default (Auto)</SelectItem>
-                                        <SelectItem value="-1" className="text-red-500">Nil (No Machine)</SelectItem>
-                                        {upiMachines.map(m => <SelectItem key={m.id} value={m.id.toString()}>{m.name}</SelectItem>)}
+                                        <SelectItem value="none">-- Select --</SelectItem>
+                                        {queueCompatibleStock.map(inv => {
+                                            const range = inv.endNumber - inv.currentNumber + 1;
+                                            return (
+                                                <SelectItem key={inv.id} value={inv.id.toString()}>
+                                                    {inv.seriesLabel} (#{inv.currentNumber}-#{inv.endNumber}) • Qty: {range}
+                                                </SelectItem>
+                                            );
+                                        })}
                                     </SelectContent>
                                 </Select>
                             </div>
+
+                            <div className="col-span-2">
+                                <Button
+                                    className="w-full bg-blue-600 hover:bg-blue-700 h-9"
+                                    onClick={handleAddToQueue}
+                                    disabled={!queueStaff || !queueItem || !queueInventoryId || queueInventoryId === 'none'}
+                                >
+                                    <Plus className="w-4 h-4 mr-1" /> Add
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Queue List */}
+                        <div className="border rounded-md min-h-[200px] overflow-hidden">
+                            <Table>
+                                <TableHeader className="bg-gray-100">
+                                    <TableRow>
+                                        <TableHead>Staff Name</TableHead>
+                                        <TableHead>Ticket Item</TableHead>
+                                        <TableHead>Bundle</TableHead>
+                                        <TableHead>Quantity</TableHead>
+                                        <TableHead>Assigned Date</TableHead>
+                                        <TableHead className="text-right">Remove</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {pendingAssignments.map((p) => (
+                                        <TableRow key={p.tempId}>
+                                            <TableCell className="font-medium">{p.staffName}</TableCell>
+                                            <TableCell>{p.ticketTypeName}</TableCell>
+                                            <TableCell className="font-mono text-xs">{p.seriesLabel}</TableCell>
+                                            <TableCell className="font-bold">{p.quantity}</TableCell>
+                                            <TableCell className="text-xs text-gray-500">{p.assignedDate}</TableCell>
+                                            <TableCell className="text-right">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                    onClick={() => handleRemoveFromQueue(p.tempId)}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                    {pendingAssignments.length === 0 && (
+                                        <TableRow>
+                                            <TableCell colSpan={6} className="text-center py-12 text-gray-400">
+                                                Queue is empty. Add assignments using the row above.
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
                         </div>
                     </div>
 
-                    <DialogFooter>
+                    <DialogFooter className="mt-4">
                         <Button variant="outline" onClick={() => setOpenBulkAssign(false)}>Cancel</Button>
-                        <Button onClick={handleBulkAssignSubmit} disabled={bulkAssignLoading || bulkAssignStockIds.length === 0}>
-                            Assign {bulkAssignStockIds.length} Bundles
+                        <Button onClick={handleBulkAssignSubmit} disabled={bulkAssignLoading || pendingAssignments.length === 0} className="w-40">
+                            {bulkAssignLoading ? 'Processing...' : `Confirm All (${pendingAssignments.length})`}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
