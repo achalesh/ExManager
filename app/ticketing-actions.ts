@@ -913,7 +913,8 @@ export async function settleStaffAssignment(data: z.infer<typeof settlementSchem
                             ownerShares: true, // Fetch shares to split revenue
                             upiMachine: true // Fetch assigned machine
                         }
-                    }
+                    },
+                    ticketInventory: true // Fetch inventory to get specific batch price
                 }
             });
             if (!assignment) throw new Error('Assignment not found');
@@ -922,7 +923,8 @@ export async function settleStaffAssignment(data: z.infer<typeof settlementSchem
             const settleDate = parsed.returnDate ? new Date(parsed.returnDate) : new Date();
 
             const soldCount = assignment.assignedCount - parsed.returnedCount;
-            const expectedAmount = soldCount * assignment.ticketType.price;
+            const price = assignment.ticketInventory?.price ?? assignment.ticketType.price;
+            const expectedAmount = soldCount * price;
 
             // --- Profit Sharing Logic ---
             const ownerShares = assignment.ticketType.ownerShares || [];
@@ -1022,7 +1024,8 @@ export async function settleStaffAssignment(data: z.infer<typeof settlementSchem
                     soldCount,
                     totalAmount: expectedAmount,
                     cashReceived: parsed.cashReceived,
-                    upiReceived: parsed.upiReceived || 0
+                    upiReceived: parsed.upiReceived || 0,
+                    difference: (parsed.cashReceived + (parsed.upiReceived || 0)) - expectedAmount
                 }
             });
         });

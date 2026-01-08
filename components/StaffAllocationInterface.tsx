@@ -1119,9 +1119,9 @@ export function StaffAllocationInterface({
                                                 {diff === 0 ? (
                                                     <span className="text-gray-400">-</span>
                                                 ) : diff < 0 ? (
-                                                    <span className="text-red-600 font-bold">Short: ₹{Math.abs(diff)}</span>
+                                                    <span className="text-red-600 font-bold">Short: ₹{Math.abs(diff).toFixed(2)}</span>
                                                 ) : (
-                                                    <span className="text-green-600 font-bold">Excess: ₹{diff}</span>
+                                                    <span className="text-green-600 font-bold">Excess: ₹{diff.toFixed(2)}</span>
                                                 )}
                                             </TableCell>
                                             <TableCell className="text-right flex justify-end gap-2">
