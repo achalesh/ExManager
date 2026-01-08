@@ -198,7 +198,13 @@ export function StaffAllocationInterface({
             const type = items.find(i => i.id.toString() === queueItem);
             // Must be available AND not already in queue
             const inQueue = pendingAssignments.some(p => p.inventoryId === inv.id);
-            return !inQueue && type && inv.status === 'Available' && inv.category === type.category && inv.price === type.price;
+            if (inQueue || !type || inv.status !== 'Available') return false;
+
+            // Relaxed rule for Entrance
+            if (type.category === 'Entrance' && inv.category === 'Entrance') return true;
+
+            // Strict for others
+            return inv.category === type.category && inv.price === type.price;
         })
         : [];
 
@@ -720,7 +726,17 @@ export function StaffAllocationInterface({
     // Filter compatible stock for assignment
     const currentTicketType = items.find(i => i.id.toString() === selectedItem);
     const compatibleStock = currentTicketType
-        ? inventory.filter(inv => inv.status === 'Available' && inv.category === currentTicketType.category && inv.price === currentTicketType.price)
+        ? inventory.filter(inv => {
+            if (inv.status !== 'Available') return false;
+
+            // Allow any Entrance category stock for Entrance tickets (ignore price/exact match)
+            if (currentTicketType.category === 'Entrance' && inv.category === 'Entrance') {
+                return true;
+            }
+
+            // Default strict matching for others (e.g. Amusement must match price/variant)
+            return inv.category === currentTicketType.category && inv.price === currentTicketType.price;
+        })
         : [];
 
     const handleExportSettlements = () => {
