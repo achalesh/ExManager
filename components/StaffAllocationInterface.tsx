@@ -1152,15 +1152,8 @@ export function StaffAllocationInterface({
                                     <SelectValue placeholder="Select Staff" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {staffList.filter(s => s.department === 'Booking').map(s => (
-                                        <SelectItem key={s.id} value={s.id.toString()}>{s.name} (Booking)</SelectItem>
-                                    ))}
-                                    {/* Show others in a group? Or just filter Booking? Usually Booking dept handles sales. */}
-                                    {staffList.filter(s => s.department !== 'Booking').length > 0 && (
-                                        <div className="border-t my-1"></div>
-                                    )}
-                                    {staffList.filter(s => s.department !== 'Booking').map(s => (
-                                        <SelectItem key={s.id} value={s.id.toString()}>{s.name} ({s.department})</SelectItem>
+                                    {staffList.filter(s => ['Booking', 'Amusement'].includes(s.department)).sort((a, b) => a.name.localeCompare(b.name)).map(s => (
+                                        <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
@@ -1328,12 +1321,8 @@ export function StaffAllocationInterface({
                                         <SelectValue placeholder="Select Staff" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {staffList.filter(s => s.department === 'Booking').map(s => (
-                                            <SelectItem key={s.id} value={s.id.toString()}>{s.name} (Booking)</SelectItem>
-                                        ))}
-                                        {staffList.filter(s => s.department !== 'Booking').length > 0 && <div className="border-t my-1"></div>}
-                                        {staffList.filter(s => s.department !== 'Booking').map(s => (
-                                            <SelectItem key={s.id} value={s.id.toString()}>{s.name} ({s.department})</SelectItem>
+                                        {staffList.filter(s => ['Booking', 'Amusement'].includes(s.department)).sort((a, b) => a.name.localeCompare(b.name)).map(s => (
+                                            <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
@@ -1727,7 +1716,7 @@ export function StaffAllocationInterface({
                                         <SelectValue placeholder="Select Staff" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {staffList.filter(s => s.department === 'Booking').sort((a, b) => a.name.localeCompare(b.name)).map(s => (
+                                        {staffList.filter(s => ['Booking', 'Amusement'].includes(s.department)).sort((a, b) => a.name.localeCompare(b.name)).map(s => (
                                             <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
                                         ))}
                                     </SelectContent>
