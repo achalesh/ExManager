@@ -3,12 +3,12 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { AmusementLedgerInterface } from '@/components/AmusementLedgerInterface';
 
-async function getAmusementOwners(eventId: string) {
+async function getAmusementOwners(eventId: number) {
     if (!eventId) return [];
     return prisma.amusementOwner.findMany({
         where: {
             ticketTypes: {
-                some: { eventId: Number(eventId) }
+                some: { eventId: eventId }
             }
         },
         orderBy: { name: 'asc' }
@@ -21,7 +21,7 @@ export default async function AmusementLedgerPage() {
         redirect('/dashboard');
     }
 
-    const owners = await getAmusementOwners(session.activeEventId);
+    const owners = await getAmusementOwners(session.activeEventId || 0);
 
     return (
         <div className="space-y-6">
