@@ -82,10 +82,7 @@ interface Assignment {
     soldCount?: number;
     returnedCount?: number;
     totalAmount?: number;
-    // Settlement
-    soldCount?: number;
-    returnedCount?: number;
-    totalAmount?: number;
+
     returnDate?: Date | null;
 }
 
