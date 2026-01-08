@@ -41,7 +41,7 @@ interface TicketType {
     price: number;
     upiMachine?: {
         name: string;
-    };
+    } | null;
     batches?: {
         id: number;
         currentNumber: number;
