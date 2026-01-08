@@ -85,7 +85,7 @@ interface Assignment {
     totalAmount?: number;
 
     returnDate?: Date | null;
-    difference?: number; // Added missing field
+    difference?: number | null; // Added missing field
 }
 
 interface GroupedAssignment {
