@@ -39,6 +39,7 @@ interface TicketType {
     }[];
     upiMachineId?: number | null;
     upiMachine?: { id: number, name: string };
+    ticketsPerBooklet?: number | null;
 }
 
 export function UpdateTicketTypeDialog({ ticketType }: { ticketType: TicketType }) {
@@ -53,6 +54,7 @@ export function UpdateTicketTypeDialog({ ticketType }: { ticketType: TicketType 
     const [price, setPrice] = useState(ticketType.price);
     const [category, setCategory] = useState(ticketType.category);
     const [upiMachineId, setUpiMachineId] = useState<string>('');
+    const [ticketsPerBooklet, setTicketsPerBooklet] = useState<number>(ticketType.ticketsPerBooklet || 100);
 
     // Multi-owner State
     const [shares, setShares] = useState<{ ownerId: string, share: string }[]>([]);
@@ -68,6 +70,7 @@ export function UpdateTicketTypeDialog({ ticketType }: { ticketType: TicketType 
             } else {
                 setUpiMachineId('');
             }
+            setTicketsPerBooklet(ticketType.ticketsPerBooklet || 100);
         }
     }, [open, ticketType]);
 
@@ -135,7 +138,8 @@ export function UpdateTicketTypeDialog({ ticketType }: { ticketType: TicketType 
             price: Number(price),
             category: category as 'Entrance' | 'Amusement',
             ownerShares: validShares,
-            upiMachineId: upiMachineId ? parseInt(upiMachineId) : undefined
+            upiMachineId: upiMachineId ? parseInt(upiMachineId) : undefined,
+            ticketsPerBooklet: Number(ticketsPerBooklet)
         };
 
         const result = await updateTicketType(ticketType.id, data);
@@ -204,6 +208,20 @@ export function UpdateTicketTypeDialog({ ticketType }: { ticketType: TicketType 
                             placeholder="e.g. Adult Entry"
                             required
                         />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="ticketsPerBooklet">Tickets per Bundle (Default)</Label>
+                        <Input
+                            id="ticketsPerBooklet"
+                            name="ticketsPerBooklet"
+                            type="number"
+                            min="1"
+                            value={ticketsPerBooklet}
+                            onChange={(e) => setTicketsPerBooklet(Number(e.target.value))}
+                            placeholder="e.g. 100"
+                        />
+                        <p className="text-xs text-gray-500">Used when adding stock.</p>
                     </div>
 
                     <div className="space-y-2">

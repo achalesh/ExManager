@@ -24,6 +24,7 @@ const ticketTypeSchema = z.object({
 
     // UPI Machine Assignment
     upiMachineId: z.coerce.number().optional().nullable(),
+    ticketsPerBooklet: z.coerce.number().optional().default(100),
 });
 
 const ticketBatchSchema = z.object({
@@ -77,6 +78,7 @@ export async function createTicketType(data: z.infer<typeof ticketTypeSchema>) {
                 ownerSharePercentage: sharesToCreate.length > 0 ? sharesToCreate[0].sharePercentage : 0,
 
                 upiMachineId: parsed.upiMachineId || null,
+                ticketsPerBooklet: parsed.ticketsPerBooklet,
 
                 ownerShares: {
                     create: sharesToCreate.map(s => ({
@@ -102,52 +104,63 @@ export async function updateTicketType(id: number, data: Partial<z.infer<typeof 
     }
 
     try {
-        // Construct shares similar to create
-        let sharesToUpdate = data.ownerShares || [];
+        const parsed = ticketTypeSchema.partial().parse(data);
 
-        // If pure legacy update (sending only amusementOwnerId and no ownerShares array)
-        if ((!data.ownerShares || data.ownerShares.length === 0) && data.amusementOwnerId) {
-            sharesToUpdate.push({
-                amusementOwnerId: data.amusementOwnerId,
-                sharePercentage: data.ownerSharePercentage || 0
-            });
-        }
+        // If shares are updated, we need to replace them
+        // This logic is complex for partial updates, usually we expect full ownerShares array if updating ownership
 
-        await prisma.$transaction(async (tx) => {
-            // 1. Update basic fields
-            await tx.ticketType.update({
-                where: { id },
-                data: {
-                    name: data.name,
-                    price: data.price,
-                    category: data.category,
-                    // Update legacy fields with the first share if exists, else null
-                    amusementOwnerId: sharesToUpdate.length > 0 ? sharesToUpdate[0].amusementOwnerId : null,
-                    ownerSharePercentage: sharesToUpdate.length > 0 ? sharesToUpdate[0].sharePercentage : 0,
-                    upiMachineId: data.upiMachineId || null
-                }
-            });
+        await prisma.ticketType.update({
+            where: { id },
+            data: {
+                ...(parsed.category && { category: parsed.category }),
+                ...(parsed.name && { name: parsed.name }),
+                ...(parsed.price !== undefined && { price: parsed.price }),
+                ...(parsed.upiMachineId !== undefined && { upiMachineId: parsed.upiMachineId }),
+                ...(parsed.ticketsPerBooklet !== undefined && { ticketsPerBooklet: parsed.ticketsPerBooklet }),
 
-            // 2. Sync Shares (Delete all and recreate is simplest)
-            await tx.ticketOwnerShare.deleteMany({
-                where: { ticketTypeId: id }
-            });
+                // For now, if ownerShares are passed, we might need a separate logic or assume full replace
+                // But ticketType update in UI might not send shares. 
+            }
+        });
 
-            if (sharesToUpdate.length > 0) {
-                await tx.ticketOwnerShare.createMany({
-                    data: sharesToUpdate.map(s => ({
+        // If we need to update shares:
+        if (parsed.ownerShares) {
+            // Delete existing
+            await prisma.ticketOwnerShare.deleteMany({ where: { ticketTypeId: id } });
+            // Create new
+            if (parsed.ownerShares.length > 0) {
+                await prisma.ticketOwnerShare.createMany({
+                    data: parsed.ownerShares.map(s => ({
                         ticketTypeId: id,
                         amusementOwnerId: s.amusementOwnerId,
                         sharePercentage: s.sharePercentage
                     }))
                 });
-            }
-        });
 
+                // Update main legacy pointers
+                await prisma.ticketType.update({
+                    where: { id },
+                    data: {
+                        amusementOwnerId: parsed.ownerShares[0].amusementOwnerId,
+                        ownerSharePercentage: parsed.ownerShares[0].sharePercentage
+                    }
+                });
+            } else {
+                await prisma.ticketType.update({
+                    where: { id },
+                    data: {
+                        amusementOwnerId: null,
+                        ownerSharePercentage: 0
+                    }
+                });
+            }
+        }
+
+        revalidatePath('/dashboard/ticketing');
         revalidatePath('/dashboard/settings/tickets');
         return { success: true };
     } catch (error) {
-        console.error('Update Ticket Error', error);
+        console.error('Error updating ticket type:', error);
         return { success: false, error: 'Failed to update ticket type' };
     }
 }

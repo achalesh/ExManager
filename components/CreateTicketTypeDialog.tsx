@@ -97,7 +97,8 @@ export function CreateTicketTypeDialog({ eventId }: { eventId: number }) {
             category: formData.get('category') as 'Entrance' | 'Amusement',
             price: Number(formData.get('price')),
             ownerShares: validShares.length > 0 ? validShares : undefined,
-            upiMachineId: upiMachineId ? parseInt(upiMachineId) : undefined
+            upiMachineId: upiMachineId ? parseInt(upiMachineId) : undefined,
+            ticketsPerBooklet: Number(formData.get('ticketsPerBooklet')) || 100
         };
 
         const result = await createTicketType(data);
@@ -159,6 +160,19 @@ export function CreateTicketTypeDialog({ eventId }: { eventId: number }) {
                                 required
                             />
                         </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="ticketsPerBooklet">Tickets per Bundle (Default)</Label>
+                        <Input
+                            id="ticketsPerBooklet"
+                            name="ticketsPerBooklet"
+                            type="number"
+                            min="1"
+                            defaultValue="100"
+                            placeholder="e.g. 100"
+                        />
+                        <p className="text-xs text-gray-500">Used wnen adding stock.</p>
                     </div>
 
                     <div className="space-y-2">

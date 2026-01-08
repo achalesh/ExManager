@@ -381,6 +381,7 @@ model TicketType {
   
   upiMachineId  Int?
   upiMachine    UPIMachine? @relation(fields: [upiMachineId], references: [id])
+  ticketsPerBooklet Int?      @default(100) // Default bundle size
 
   ledgerEntries AmusementLedger[]
   createdAt DateTime      @default(now())
