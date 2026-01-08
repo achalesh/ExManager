@@ -1449,8 +1449,9 @@ export async function undoSettlement(assignmentId: number) {
             // Logic: If returnedCount > 0, we likely created a TicketInventory.
             // Range: (endNumber - returnedCount + 1) to endNumber.
             // Series: Ends with (Ret)?
-            if (assignment.returnedCount > 0) {
-                const returnStart = assignment.endNumber - assignment.returnedCount + 1;
+            const returnedCount = assignment.returnedCount || 0;
+            if (returnedCount > 0) {
+                const returnStart = assignment.endNumber - returnedCount + 1;
                 const returnEnd = assignment.endNumber;
 
                 const retInventory = await tx.ticketInventory.findFirst({
@@ -1522,7 +1523,7 @@ export async function undoSettlement(assignmentId: number) {
             // 3. Remove Sales Records
             // We need to find the TicketSaleItem records.
             // Range: startNumber to (endNumber - returnedCount)
-            const soldEndNumber = assignment.endNumber - assignment.returnedCount;
+            const soldEndNumber = assignment.endNumber - returnedCount;
             if (soldEndNumber >= assignment.startNumber) {
                 // Find items
                 const saleItems = await tx.ticketSaleItem.findMany({
