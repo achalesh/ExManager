@@ -1514,7 +1514,7 @@ export async function undoSettlement(assignmentId: number) {
                     where: {
                         date: assignment.settlementDate,
                         ticketTypeId: assignment.ticketTypeId,
-                        soldCount: assignment.soldCount, // Extra safety
+                        soldCount: assignment.soldCount || 0, // Extra safety
                         details: { contains: `Share from ${assignment.ticketType.name}` }
                     }
                 });
