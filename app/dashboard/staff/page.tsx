@@ -7,6 +7,7 @@ import { DeleteStaffButton } from '@/components/DeleteStaffButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Phone, MapPin, Calendar, CreditCard } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default async function StaffPage() {
     const session = await getSession();
@@ -21,7 +22,7 @@ export default async function StaffPage() {
 
     const staffList = await getEventStaff(session.activeEventId);
 
-    import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 
     const departments = ['All', 'Booking', 'Amusement', 'Security', 'Office'];
 
