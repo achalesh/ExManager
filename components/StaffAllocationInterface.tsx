@@ -69,6 +69,7 @@ interface Staff {
 
 interface Assignment {
     id: number;
+    staffId: number; // Added missing field
     staff: Staff;
     ticketType: TicketType;
     seriesLabel: string;
@@ -84,6 +85,7 @@ interface Assignment {
     totalAmount?: number;
 
     returnDate?: Date | null;
+    difference?: number; // Added missing field
 }
 
 interface GroupedAssignment {
@@ -737,6 +739,7 @@ export function StaffAllocationInterface({
         : [];
 
     const handleExportSettlements = () => {
+        const pastAssignments = [...returnedAssignments, ...settledAssignments];
         if (pastAssignments.length === 0) return;
         const headers = ['Staff Name', 'Item', 'Returned Date', 'Sold Count', 'Assigned Count', 'Total Amount', 'Status'];
         const csvContent = [

@@ -86,7 +86,7 @@ export async function createTicketType(data: z.infer<typeof ticketTypeSchema>) {
                         sharePercentage: s.sharePercentage
                     }))
                 }
-            },
+            } as any,
         });
         revalidatePath('/dashboard/ticketing');
         revalidatePath('/dashboard/settings/tickets');
