@@ -579,7 +579,7 @@ export async function getAmusementLedger(ownerId: string) {
     }
 }
 
-export async function getEventLedger(activeEventId?: string) {
+export async function getEventLedger(activeEventId?: string | number | null) {
     const session = await getSession();
     if (!session) return { transactions: [], summary: { income: 0, expense: 0, balance: 0, cashBalance: 0, companyBalance: 0 } };
 
