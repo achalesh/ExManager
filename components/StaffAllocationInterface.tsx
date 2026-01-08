@@ -86,6 +86,7 @@ interface Assignment {
 
     returnDate?: Date | null;
     difference?: number | null; // Added missing field
+    ticketInventory: TicketInventory;
 }
 
 interface GroupedAssignment {
@@ -676,7 +677,8 @@ export function StaffAllocationInterface({
 
         list.forEach(a => {
             const dateStr = new Date(a.assignedDate).toISOString().split('T')[0];
-            const key = `${a.staff.id}-${a.ticketType.id}-${dateStr}`;
+            const price = a.ticketInventory?.price ?? a.ticketType.price;
+            const key = `${a.staff.id}-${a.ticketType.id}-${price}-${dateStr}`;
 
             if (!groups[key]) {
                 groups[key] = {
@@ -686,7 +688,7 @@ export function StaffAllocationInterface({
                     ticketTypeId: a.ticketType.id,
                     ticketTypeName: a.ticketType.name,
                     ticketCategory: a.ticketType.category,
-                    ticketPrice: a.ticketType.price,
+                    ticketPrice: price,
                     assignedDate: dateStr,
                     totalAssigned: 0,
                     ids: [],
