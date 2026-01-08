@@ -33,6 +33,7 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
     const [price, setPrice] = useState<string>('');
     const [startNumber, setStartNumber] = useState<string>('');
     const [endNumber, setEndNumber] = useState<string>('');
+    const [splitSize, setSplitSize] = useState<string>('100'); // Default 100
     const router = useRouter();
 
     // Auto-fill logic
@@ -51,19 +52,36 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
         if (type) {
             setSelectedCategory(type.category);
             setPrice(type.price.toString());
+            const newSize = type.ticketsPerBooklet ? type.ticketsPerBooklet.toString() : '100';
+            setSplitSize(newSize);
+
             // If start number exists, recalc end number
-            if (startNumber && type.ticketsPerBooklet) {
-                const end = Number(startNumber) + type.ticketsPerBooklet - 1;
-                setEndNumber(end.toString());
+            if (startNumber && newSize) {
+                // If we want to add just ONE bundle by default? Or let user type End Number?
+                // Usually "Add Stock" implies a batch.
+                // If I set End Number = Start + Split - 1, it implies 1 bundle.
+                // But user might want 1-5000.
+                // Let's NOT touch End Number if it's already set, unless it's empty?
+                // Or maybe just let them set End Number.
+                // Recalculating End Number might be annoying if they already typed 5000.
+                // But previously I WAS recalculating it. 
+                // Let's only set End Number if it's empty to be safe, or just leave it.
+                // Actually, the previous logic was: setEndNumber(end.toString());
+                // I'll keep it simple: Don't change End Number automatically on type change if it's unrelated.
+                // But wait, the previous logic was helping them add ONE bundle.
+                // Now we encourage BATCHES.
+                // So let's NOT auto-limit End Number. Let them type "5000".
             }
         }
     };
 
     const handleStartNumberChange = (val: string) => {
         setStartNumber(val);
-        const type = ticketTypes.find(t => t.id.toString() === selectedTicketTypeId);
-        if (type && type.ticketsPerBooklet && val) {
-            const end = Number(val) + type.ticketsPerBooklet - 1;
+        // Only auto-fill End Number if it's empty? 
+        // Or if they want a single bundle?
+        // Let's auto-fill End Number to Start + Split - 1 IF End Number is empty.
+        if (!endNumber && splitSize && val) {
+            const end = Number(val) + Number(splitSize) - 1;
             setEndNumber(end.toString());
         }
     };
@@ -85,9 +103,6 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
             finalCategory = customCategory.trim();
         }
 
-        const currentType = ticketTypes.find(t => t.id.toString() === selectedTicketTypeId);
-        const splitSize = currentType?.ticketsPerBooklet || 1000; // Default to old behavior if no type selected
-
         const data = {
             eventId,
             seriesLabel: formData.get('seriesLabel') as string,
@@ -95,7 +110,7 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
             endNumber: Number(endNumber),
             price: Number(price),
             category: finalCategory,
-            splitSize,
+            splitSize: Number(splitSize),
         };
 
         const result = await addInventory(data);
@@ -108,6 +123,7 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
             setEndNumber('');
             setPrice('');
             setSelectedTicketTypeId('');
+            setSplitSize('100');
         } else {
             setError(result.error || 'Failed to add inventory');
         }
@@ -223,6 +239,21 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
                                 />
                             </div>
                         )}
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="splitSize">Bundle Size (Split)</Label>
+                        <Input
+                            id="splitSize"
+                            name="splitSize"
+                            type="number"
+                            min="1"
+                            value={splitSize}
+                            onChange={(e) => setSplitSize(e.target.value)}
+                            required
+                            placeholder="e.g. 100"
+                        />
+                        <p className="text-xs text-gray-500">Stock will be split into bundles of this size.</p>
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => setOpen(false)}>
