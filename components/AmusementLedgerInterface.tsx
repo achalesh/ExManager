@@ -8,7 +8,7 @@ import { getAmusementLedger } from '@/app/accounts-actions';
 import { Loader2 } from 'lucide-react';
 
 interface Owner {
-    id: string;
+    id: number;
     name: string;
 }
 
@@ -54,7 +54,7 @@ export function AmusementLedgerInterface({ owners }: { owners: Owner[] }) {
                         </SelectTrigger>
                         <SelectContent>
                             {owners.map(owner => (
-                                <SelectItem key={owner.id} value={owner.id}>
+                                <SelectItem key={owner.id} value={owner.id.toString()}>
                                     {owner.name}
                                 </SelectItem>
                             ))}
