@@ -107,15 +107,40 @@ export async function addInventory(data: {
     endNumber: number;
     price: number;
     category: string;
+    splitSize?: number; // Optional split size
 }) {
     try {
         const chunks = [];
         let currentStart = data.startNumber;
+        const splitSize = data.splitSize || 1000; // Default to 1000 if not provided
+
         while (currentStart <= data.endNumber) {
-            // Calculate the next 1000s boundary
-            // e.g. 1001 -> 2000, 2331 -> 3000
-            const nextBoundary = (Math.floor((currentStart - 1) / 1000) + 1) * 1000;
-            const chunkEnd = Math.min(nextBoundary, data.endNumber);
+            // Calculate end of current chunk
+            // If splitSize is 100, Start 1 -> End 100 (1 + 100 - 1)
+            // But we must handle "Boundaries" for 1000s if splitSize is 1000 (legacy)
+            // Simpler logic: purely size based? 
+            // The previous logic was boundary-aligned (1001-2000). 
+            // If we want strict 100 size: 1-100, 101-200.
+
+            // Let's use simple size addition but respect endNumber
+            let chunkEnd = currentStart + splitSize - 1;
+
+            // If using default 1000, keep legacy boundary logic to align nice numbers?
+            // "The next 1000s boundary": (Math.floor((currentStart - 1) / 1000) + 1) * 1000
+            // If the user explicitly asks for splitSize (e.g. 100), we should just add 100.
+            // But usually printed books align to 1-100, 101-200.
+            // If Start is 5, split 100 -> 5 to 104? Or 5 to 100?
+            // Usually tickets are strictly numbered. 1-100.
+            // Let's trust pure addition for custom sizes, satisfying the "Bundle Size" request.
+
+            if (!data.splitSize) {
+                // Legacy 1000 alignment
+                const nextBoundary = (Math.floor((currentStart - 1) / 1000) + 1) * 1000;
+                chunkEnd = Math.min(nextBoundary, data.endNumber);
+            } else {
+                // Strict size limit, but clamp to endNumber
+                chunkEnd = Math.min(chunkEnd, data.endNumber);
+            }
 
             chunks.push({
                 start: currentStart,
@@ -125,7 +150,7 @@ export async function addInventory(data: {
             currentStart = chunkEnd + 1;
         }
 
-        console.log(`Adding Inventory: ${data.startNumber}-${data.endNumber} (${data.endNumber - data.startNumber + 1} tickets). Created ${chunks.length} chunks.`);
+        console.log(`Adding Inventory: ${data.startNumber}-${data.endNumber} (${data.endNumber - data.startNumber + 1} tickets). SplitSize: ${splitSize}. Created ${chunks.length} chunks.`);
 
         await prisma.$transaction(
             chunks.map(chunk =>

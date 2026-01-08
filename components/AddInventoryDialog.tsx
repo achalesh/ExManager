@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -12,9 +12,17 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { addInventory } from '@/app/inventory-actions';
+import { getTicketTypes } from '@/app/ticketing-actions';
 import { useRouter } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { Plus, Loader2 } from 'lucide-react';
 
 export function AddInventoryDialog({ eventId }: { eventId: number }) {
     const [open, setOpen] = useState(false);
@@ -22,7 +30,43 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
     const [error, setError] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('Amusement');
     const [customCategory, setCustomCategory] = useState<string>('');
+    const [price, setPrice] = useState<string>('');
+    const [startNumber, setStartNumber] = useState<string>('');
+    const [endNumber, setEndNumber] = useState<string>('');
     const router = useRouter();
+
+    // Auto-fill logic
+    const [ticketTypes, setTicketTypes] = useState<any[]>([]);
+    const [selectedTicketTypeId, setSelectedTicketTypeId] = useState<string>('');
+
+    useEffect(() => {
+        if (open) {
+            getTicketTypes(eventId).then(types => setTicketTypes(types));
+        }
+    }, [open, eventId]);
+
+    const handleTicketTypeChange = (id: string) => {
+        setSelectedTicketTypeId(id);
+        const type = ticketTypes.find(t => t.id.toString() === id);
+        if (type) {
+            setSelectedCategory(type.category);
+            setPrice(type.price.toString());
+            // If start number exists, recalc end number
+            if (startNumber && type.ticketsPerBooklet) {
+                const end = Number(startNumber) + type.ticketsPerBooklet - 1;
+                setEndNumber(end.toString());
+            }
+        }
+    };
+
+    const handleStartNumberChange = (val: string) => {
+        setStartNumber(val);
+        const type = ticketTypes.find(t => t.id.toString() === selectedTicketTypeId);
+        if (type && type.ticketsPerBooklet && val) {
+            const end = Number(val) + type.ticketsPerBooklet - 1;
+            setEndNumber(end.toString());
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -41,13 +85,17 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
             finalCategory = customCategory.trim();
         }
 
+        const currentType = ticketTypes.find(t => t.id.toString() === selectedTicketTypeId);
+        const splitSize = currentType?.ticketsPerBooklet || 1000; // Default to old behavior if no type selected
+
         const data = {
             eventId,
             seriesLabel: formData.get('seriesLabel') as string,
-            startNumber: Number(formData.get('startNumber')),
-            endNumber: Number(formData.get('endNumber')),
-            price: Number(formData.get('price')),
+            startNumber: Number(startNumber),
+            endNumber: Number(endNumber),
+            price: Number(price),
             category: finalCategory,
+            splitSize,
         };
 
         const result = await addInventory(data);
@@ -55,6 +103,11 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
         if (result.success) {
             setOpen(false);
             router.refresh();
+            // Reset fields
+            setStartNumber('');
+            setEndNumber('');
+            setPrice('');
+            setSelectedTicketTypeId('');
         } else {
             setError(result.error || 'Failed to add inventory');
         }
@@ -79,6 +132,25 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
                             {error}
                         </div>
                     )}
+
+                    <div className="space-y-2 p-3 bg-blue-50 rounded-md border border-blue-100">
+                        <Label className="text-blue-700">Link to Ticket Type (Optional)</Label>
+                        <Select value={selectedTicketTypeId} onValueChange={handleTicketTypeChange}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select a Ticket Type to auto-fill..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">-- None (Manual Entry) --</SelectItem>
+                                {ticketTypes.map(t => (
+                                    <SelectItem key={t.id} value={t.id.toString()}>
+                                        {t.name} (₹{t.price}) - {t.category}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-blue-600">Selecting a ticket type will auto-set Category, Price, and Bundle Size.</p>
+                    </div>
+
                     <div className="space-y-2">
                         <Label htmlFor="seriesLabel">Series Label</Label>
                         <Input
@@ -96,6 +168,8 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
                                 name="startNumber"
                                 type="number"
                                 min="1"
+                                value={startNumber}
+                                onChange={(e) => handleStartNumberChange(e.target.value)}
                                 required
                             />
                         </div>
@@ -106,6 +180,8 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
                                 name="endNumber"
                                 type="number"
                                 min="1"
+                                value={endNumber}
+                                onChange={(e) => setEndNumber(e.target.value)}
                                 required
                             />
                         </div>
@@ -118,6 +194,8 @@ export function AddInventoryDialog({ eventId }: { eventId: number }) {
                             type="number"
                             min="0"
                             step="0.01"
+                            value={price}
+                            onChange={(e) => setPrice(e.target.value)}
                             required
                             placeholder="0.00"
                         />
