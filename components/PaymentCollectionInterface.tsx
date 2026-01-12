@@ -164,6 +164,7 @@ export function PaymentCollectionInterface({ exhibitors, eventId }: PaymentColle
                 }
 
                 router.refresh();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }
 
         } catch (e: any) {
@@ -349,6 +350,12 @@ export function PaymentCollectionInterface({ exhibitors, eventId }: PaymentColle
                                             setSplits(newSplits);
                                         }}
                                         placeholder="0.00"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleSave(false);
+                                            }
+                                        }}
                                     />
                                 </div>
                                 <div className="flex-1">

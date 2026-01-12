@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -29,10 +29,10 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { assignTicketsToStaff, settleStaffAssignment, undoStaffAssignment, assignTicketStock, updateStaffAssignment, undoSettlement, finalizeStaffSettlement } from '@/app/ticketing-actions';
+import { assignTicketsToStaff, settleStaffAssignment, undoStaffAssignment, updateStaffAssignment, undoSettlement, finalizeStaffSettlement, updateStaffSettlementAmount, recalculatePastSettlements } from '@/app/ticketing-actions';
 import { getUPIMachines } from '@/app/upi-actions';
 import { useRouter } from 'next/navigation';
-import { Plus, ArrowRightLeft, Users, AlertCircle, Download, Pencil, Trash2, Calendar, IndianRupee, RotateCcw, CheckCircle, FileText } from 'lucide-react';
+import { Plus, ArrowRightLeft, Users, AlertCircle, Download, Pencil, Trash2, Calendar, IndianRupee, RotateCcw, CheckCircle, FileText, Printer, X, Filter } from 'lucide-react';
 
 interface TicketType {
     id: number;
@@ -85,8 +85,10 @@ interface Assignment {
     totalAmount?: number;
 
     returnDate?: Date | null;
-    difference?: number | null; // Added missing field
+    difference?: number | null;
     ticketInventory: TicketInventory;
+    cashReceived?: number;
+    upiReceived?: number;
 }
 
 interface GroupedAssignment {
@@ -155,11 +157,7 @@ export function StaffAllocationInterface({
     const [selectedStock, setSelectedStock] = useState<string>('');
     const [quantity, setQuantity] = useState<number>(0);
 
-    // Counter Allocation State
-    // Counter Allocation State
-    const [selectedItemForBatch, setSelectedItemForBatch] = useState<TicketType | null>(null);
-    const [openAssignBatch, setOpenAssignBatch] = useState(false);
-    const [loadingBatch, setLoadingBatch] = useState(false);
+
 
     // Bulk ASSIGN State
     // Bulk ASSIGN Queue State
@@ -169,10 +167,49 @@ export function StaffAllocationInterface({
     const [queueDate, setQueueDate] = useState(todayStr);
     const [queueUpiMachine, setQueueUpiMachine] = useState('0'); // 0=Auto, -1=Nil
 
+    // Filter State
+    const [filterDate, setFilterDate] = useState<string>('');
+
+    // Helper for Date Filtering
+    const matchesFilter = (d: Date | string | null | undefined) => {
+        if (!filterDate) return true;
+        if (!d) return false;
+        return new Date(d).toISOString().split('T')[0] === filterDate;
+    };
+
+    const FilterControls = () => (
+        <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded border">
+                <Filter className="h-3 w-3 text-gray-500" />
+                <span className="text-xs font-medium text-gray-700">Filter:</span>
+                <input
+                    type="date"
+                    value={filterDate}
+                    onChange={(e) => setFilterDate(e.target.value)}
+                    className="h-6 text-sm bg-transparent border-none focus:ring-0 p-0 text-gray-600"
+                />
+                {filterDate && (
+                    <button onClick={() => setFilterDate('')} className="text-gray-400 hover:text-red-500">
+                        <X className="h-3 w-3" />
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+
     // Row Input State
     const [queueStaff, setQueueStaff] = useState('');
     const [queueItem, setQueueItem] = useState('');
     const [queueInventoryId, setQueueInventoryId] = useState('');
+
+    // Edit Settlement State
+    const [openEditSettlement, setOpenEditSettlement] = useState(false);
+    const [editSettlementData, setEditSettlementData] = useState({
+        assignmentId: 0,
+        cash: '',
+        upi: ''
+    });
+    const [editSettlementLoading, setEditSettlementLoading] = useState(false);
 
     // The Queue
     interface PendingAssignment {
@@ -191,6 +228,30 @@ export function StaffAllocationInterface({
 
     const [bulkAssignLoading, setBulkAssignLoading] = useState(false);
     const [bulkAssignError, setBulkAssignError] = useState('');
+
+    const handleUpdateSettlement = async () => {
+        if (!editSettlementData.assignmentId) return;
+        setEditSettlementLoading(true);
+        try {
+            const res = await updateStaffSettlementAmount({
+                assignmentId: editSettlementData.assignmentId,
+                cashReceived: Number(editSettlementData.cash) || 0,
+                upiReceived: Number(editSettlementData.upi) || 0
+            });
+
+            if (res && res.success) {
+                setOpenEditSettlement(false);
+                router.refresh();
+            } else {
+                alert('Failed to update: ' + (res?.error || 'Unknown error'));
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error updating settlement');
+        } finally {
+            setEditSettlementLoading(false);
+        }
+    };
 
     // Filter stock for Queue Input
     const queueCompatibleStock = queueItem
@@ -294,6 +355,7 @@ export function StaffAllocationInterface({
     const [bulkCash, setBulkCash] = useState<number>(0);
     const [bulkUpi, setBulkUpi] = useState<number>(0);
     const [bulkError, setBulkError] = useState('');
+    const [settleOnlyMode, setSettleOnlyMode] = useState(false); // New: differentiate Return vs Just Settle
 
     const toggleSelection = (id: number) => {
         // Legacy toggle single ID
@@ -304,6 +366,7 @@ export function StaffAllocationInterface({
 
     const handleBulkSettleClick = () => {
         // Initialize returns for selected GROUPS
+        setSettleOnlyMode(false);
         const selectedAssigns = activeAssignments.filter(a => selectedAssignmentIds.includes(a.id));
         const groups = groupActiveAssignments(selectedAssigns);
 
@@ -318,6 +381,28 @@ export function StaffAllocationInterface({
         setOpenBulkSettle(true);
     };
 
+    const handleBulkSettleReturnedClick = () => {
+        // Initialize for Returned Assignments (Settle Only)
+        setSettleOnlyMode(true);
+        const selectedAssigns = returnedAssignments.filter(a => selectedAssignmentIds.includes(a.id));
+        // We reuse grouping logic to keep UI consistent
+        const groups = groupActiveAssignments(selectedAssigns);
+
+        const initialReturns: Record<string, number> = {};
+        groups.forEach(g => {
+            // Pre-fill with EXISTING returned count
+            const totalRet = g.assignments.reduce((sum, a) => sum + (a.returnedCount || 0), 0);
+            initialReturns[g.key] = totalRet;
+        });
+
+        setBulkReturns(initialReturns);
+        setBulkFirstReturns({}); // No first return input needed
+        setBulkCash(0);
+        setBulkUpi(0);
+        setBulkError('');
+        setOpenBulkSettle(true);
+    };
+
     const handleBulkReturnChange = (key: string, val: number, max: number) => {
         const safeVal = Math.min(Math.max(0, val), max);
         setBulkReturns(prev => ({ ...prev, [key]: safeVal }));
@@ -325,6 +410,8 @@ export function StaffAllocationInterface({
     };
 
     const handleBulkFirstReturnChange = (key: string, val: string, group: GroupedAssignment) => {
+        if (settleOnlyMode) return; // Disable for settle only
+
         // Allow clearing input
         if (val === '') {
             setBulkFirstReturns(prev => ({ ...prev, [key]: '' }));
@@ -365,7 +452,7 @@ export function StaffAllocationInterface({
 
     const calculateBulkTotalSold = () => {
         let total = 0;
-        const selectedAssigns = activeAssignments.filter(a => selectedAssignmentIds.includes(a.id));
+        const selectedAssigns = assignments.filter(a => selectedAssignmentIds.includes(a.id));
         const groups = groupActiveAssignments(selectedAssigns);
 
         groups.forEach(g => {
@@ -385,7 +472,7 @@ export function StaffAllocationInterface({
         const totalSold = calculateBulkTotalSold();
 
         // 1. Resolve Settlements per Assignment
-        const selectedAssigns = activeAssignments.filter(a => selectedAssignmentIds.includes(a.id));
+        const selectedAssigns = assignments.filter(a => selectedAssignmentIds.includes(a.id));
         const groups = groupActiveAssignments(selectedAssigns);
 
         let allSettlements: any[] = [];
@@ -397,8 +484,17 @@ export function StaffAllocationInterface({
             const sorted = [...g.assignments].sort((a, b) => b.id - a.id);
 
             sorted.forEach(asm => {
-                const canReturn = asm.assignedCount;
-                const actualReturn = Math.min(canReturn, pendingReturns);
+                let actualReturn = 0;
+
+                if (settleOnlyMode) {
+                    // Use EXISTING returned count from DB
+                    actualReturn = asm.returnedCount || 0;
+                } else {
+                    // Distribute calculated return
+                    const canReturn = asm.assignedCount;
+                    actualReturn = Math.min(canReturn, pendingReturns);
+                    pendingReturns -= actualReturn;
+                }
 
                 allSettlements.push({
                     assignmentId: asm.id,
@@ -407,21 +503,54 @@ export function StaffAllocationInterface({
                     price: asm.ticketType.price,
                     assignedDate: asm.assignedDate
                 });
-
-                pendingReturns -= actualReturn;
             });
         });
 
-        // 2. Calculate Cash/UPI per assignment
-        const payload = allSettlements.map(item => {
+        // 2. Calculate Cash/UPI per assignment using Waterfall Logic (Bucket Fill)
+        // This avoids decimals by prioritizing filling the "Sold Value" with available funds fully before moving to the next.
+        // Excess/Shortage lands on the last item.
+
+        let remainingCash = bulkCash;
+        let remainingUpi = bulkUpi;
+
+        const payload = allSettlements.map((item, index) => {
+            const isLast = index === allSettlements.length - 1;
             const soldVal = (item.assignedCount - item.returnCount) * item.price;
-            const ratio = totalSold > 0 ? soldVal / totalSold : 0;
+
+            // Allocation for this item
+            let allocatedUpi = 0;
+            let allocatedCash = 0;
+            let needed = soldVal;
+
+            // 1. Fill with available UPI first (User preference)
+            const upiTake = Math.min(remainingUpi, needed);
+            allocatedUpi += upiTake;
+            remainingUpi -= upiTake;
+            needed -= upiTake;
+
+            // 2. Fill with available Cash
+            const cashTake = Math.min(remainingCash, needed);
+            allocatedCash += cashTake;
+            remainingCash -= cashTake;
+            needed -= cashTake;
+
+            // 3. Excess Handling (Dump everything left onto the last item)
+            if (isLast) {
+                if (remainingUpi > 0) {
+                    allocatedUpi += remainingUpi;
+                    // remainingUpi = 0;
+                }
+                if (remainingCash > 0) {
+                    allocatedCash += remainingCash;
+                    // remainingCash = 0;
+                }
+            }
 
             return {
                 assignmentId: item.assignmentId,
                 returnCount: item.returnCount,
-                cashReceived: bulkCash * ratio,
-                upiReceived: bulkUpi * ratio,
+                cashReceived: allocatedCash,
+                upiReceived: allocatedUpi,
                 returnDate: new Date(item.assignedDate).toISOString().split('T')[0]
             };
         });
@@ -458,46 +587,7 @@ export function StaffAllocationInterface({
         }
     }, []);
 
-    const handleAssignBatchClick = (item: TicketType) => {
-        setSelectedItemForBatch(item);
-        setOpenAssignBatch(true);
-        setError('');
-    };
 
-    const handleBatchSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        setLoadingBatch(true);
-        setError('');
-
-        const formData = new FormData(e.currentTarget);
-        const inventoryId = Number(formData.get('inventoryId'));
-        const quantity = Number(formData.get('quantity'));
-
-        if (!selectedItemForBatch) return;
-
-        const res = await assignTicketStock({
-            ticketTypeId: selectedItemForBatch.id,
-            inventoryId,
-            quantity
-        });
-
-        if (res.success) {
-            setOpenAssignBatch(false);
-            router.refresh();
-        } else {
-            setError((res as any).error || 'Failed to assign stock');
-        }
-        setLoadingBatch(false);
-    };
-
-    // Filter compatible stock for Batch Allocation
-    const compatibleStockBatch = selectedItemForBatch
-        ? inventory.filter(inv =>
-            inv.status === 'Available' &&
-            inv.category === selectedItemForBatch.category &&
-            inv.price === selectedItemForBatch.price
-        )
-        : [];
 
 
     const handleAssignSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -790,6 +880,62 @@ export function StaffAllocationInterface({
         a.click();
     };
 
+    const handleExportBalancesCSV = () => {
+        const rawList = [...returnedAssignments, ...settledAssignments]
+            .filter(a => (a.difference || 0) !== 0 && matchesFilter(a.returnDate));
+
+        if (rawList.length === 0) return alert('No discrepancies to export.');
+
+        // Group Logic
+        interface StaffGroup {
+            staffId: number;
+            staffName: string;
+            totalExcess: number;
+            totalShort: number;
+        }
+        const groups: Record<number, StaffGroup> = {};
+
+        rawList.forEach(item => {
+            if (!groups[item.staffId]) {
+                groups[item.staffId] = {
+                    staffId: item.staffId,
+                    staffName: item.staff.name,
+                    totalExcess: 0,
+                    totalShort: 0
+                };
+            }
+            const diff = item.difference || 0;
+            if (diff > 0) groups[item.staffId].totalExcess += diff;
+            else groups[item.staffId].totalShort += Math.abs(diff);
+        });
+
+        const sortedGroups = Object.values(groups).sort((a, b) => a.staffName.localeCompare(b.staffName));
+        const grandTotalExcess = sortedGroups.reduce((sum, g) => sum + g.totalExcess, 0);
+        const grandTotalShort = sortedGroups.reduce((sum, g) => sum + g.totalShort, 0);
+
+        const csvRows = [
+            ['Staff Name', 'Total Excess', 'Total Short'].join(',')
+        ];
+
+        sortedGroups.forEach(g => {
+            csvRows.push([
+                `"${g.staffName}"`,
+                g.totalExcess.toFixed(2),
+                g.totalShort.toFixed(2)
+            ].join(','));
+        });
+
+        // Grand Total Row
+        csvRows.push(['GRAND TOTAL', grandTotalExcess.toFixed(2), grandTotalShort.toFixed(2)].join(','));
+
+        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `staff_balances_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm border">
@@ -813,88 +959,16 @@ export function StaffAllocationInterface({
                 </div>
             </div>
 
-            <Tabs defaultValue="active-allocations">
+            <Tabs defaultValue="active-allocations" onValueChange={() => { setSelectedAssignmentIds([]); setSettleOnlyMode(false); }}>
 
 
                 <TabsList>
                     <TabsTrigger value="active-allocations">Active Assignments ({activeAssignments.length})</TabsTrigger>
-                    <TabsTrigger value="counter">Counter Allocation</TabsTrigger>
-                    <TabsTrigger value="returned-history">Returned History ({returnedAssignments.length})</TabsTrigger>
-                    <TabsTrigger value="all-history">Settlement History</TabsTrigger>
+                    <TabsTrigger value="history">History & Settlement</TabsTrigger>
+                    <TabsTrigger value="balances">Staff Account Balances</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="counter">
-                    <div className="border rounded-md bg-white">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Item Name</TableHead>
-                                    <TableHead>Category</TableHead>
-                                    <TableHead>Price</TableHead>
-                                    <TableHead>Active Series</TableHead>
-                                    <TableHead>Current Number</TableHead>
-                                    <TableHead>Remaining</TableHead>
-                                    <TableHead className="text-right">Action</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {items.map((item) => {
-                                    const activeBatch = item.batches && item.batches.length > 0 ? item.batches[0] : null;
-                                    const remaining = activeBatch ? activeBatch.endNumber - activeBatch.currentNumber + 1 : 0;
 
-                                    return (
-                                        <TableRow key={item.id}>
-                                            <TableCell className="font-medium">{item.name}</TableCell>
-                                            <TableCell>
-                                                <Badge variant="outline">{item.category}</Badge>
-                                            </TableCell>
-                                            <TableCell>₹{item.price}</TableCell>
-                                            <TableCell className="font-mono text-sm">
-                                                {activeBatch ? (
-                                                    <>
-                                                        #{activeBatch.currentNumber} - #{activeBatch.endNumber}
-                                                    </>
-                                                ) : (
-                                                    <span className="text-gray-400">No active batch</span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                {activeBatch ? (
-                                                    <span className="font-bold text-green-700">#{activeBatch.currentNumber}</span>
-                                                ) : '-'}
-                                            </TableCell>
-                                            <TableCell>
-                                                {activeBatch ? (
-                                                    <Badge variant={remaining < 50 ? "destructive" : "secondary"}>
-                                                        {remaining}
-                                                    </Badge>
-                                                ) : '-'}
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <Button
-                                                    size="sm"
-                                                    variant="default"
-                                                    onClick={() => handleAssignBatchClick(item)}
-                                                    className="gap-2"
-                                                >
-                                                    <ArrowRightLeft className="h-4 w-4" />
-                                                    Assign Stock
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    );
-                                })}
-                                {items.length === 0 && (
-                                    <TableRow>
-                                        <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                                            No ticket items found. Create items first.
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
-                </TabsContent>
 
                 <TabsContent value="active-allocations">
                     <div className="flex justify-between items-center mb-2">
@@ -906,9 +980,6 @@ export function StaffAllocationInterface({
                             )}
                         </div>
                         <div className="flex gap-2">
-                            <Button variant="outline" size="sm" onClick={() => setOpenBalanceReport(true)}>
-                                <FileText className="h-4 w-4 mr-2" /> Staff Balances
-                            </Button>
                             <Button variant="outline" size="sm" onClick={handleExportAllocations} className="gap-2">
                                 <Download className="h-4 w-4" /> Download CSV
                             </Button>
@@ -1039,109 +1110,313 @@ export function StaffAllocationInterface({
                     </div>
                 </TabsContent>
 
-                <TabsContent value="all-history">
-                    <div className="flex justify-end mb-2">
-                        <Button variant="outline" size="sm" onClick={handleExportSettlements} className="gap-2">
-                            <Download className="h-4 w-4" /> Download CSV
-                        </Button>
+                <TabsContent value="history">
+                    <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center gap-2">
+                            <FilterControls />
+                            {activeAssignments.filter(a => selectedAssignmentIds.includes(a.id)).length === 0 && returnedAssignments.filter(a => selectedAssignmentIds.includes(a.id)).length > 0 && (
+                                <Button size="sm" onClick={handleBulkSettleReturnedClick} className="bg-blue-600 hover:bg-blue-700 text-white gap-2 ml-4">
+                                    <CheckCircle className="h-4 w-4" /> Bulk Settle ({returnedAssignments.filter(a => selectedAssignmentIds.includes(a.id)).length})
+                                </Button>
+                            )}
+                        </div>
+                        <div className="flex gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async () => {
+                                    if (!confirm('This will recalculate all past settlements to remove decimals (Waterfall Logic). Continue?')) return;
+                                    const res = await recalculatePastSettlements();
+                                    if (res.success) {
+                                        alert(`Fixed ${res.count} records.`);
+                                        router.refresh();
+                                    } else {
+                                        alert('Failed: ' + res.error);
+                                    }
+                                }}
+                                className="gap-2 text-orange-600 border-orange-200 hover:bg-orange-50"
+                            >
+                                <RotateCcw className="h-4 w-4" /> Fix Historical Decimals
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={handleExportSettlements} className="gap-2">
+                                <Download className="h-4 w-4" /> Download CSV
+                            </Button>
+                        </div>
                     </div>
                     <div className="border rounded-md bg-white">
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    <TableHead className="w-[40px]"></TableHead>
+                                    <TableHead>Date</TableHead>
                                     <TableHead>Staff Name</TableHead>
                                     <TableHead>Item</TableHead>
-                                    <TableHead>Returned Date</TableHead>
                                     <TableHead>Sold / Total</TableHead>
-                                    <TableHead>Amount</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
+                                    <TableHead>Cash / UPI</TableHead>
+                                    <TableHead>Status / Balance</TableHead>
+                                    <TableHead className="text-right">Action</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {settledAssignments.map(assign => (
-                                    <TableRow key={assign.id}>
-                                        <TableCell className="font-medium">{assign.staff.name}</TableCell>
-                                        <TableCell>{assign.ticketType.name}</TableCell>
-                                        <TableCell className="text-sm text-gray-500">
-                                            {assign.returnDate ? new Date(assign.returnDate).toLocaleDateString('en-GB') : '-'}
-                                        </TableCell>
-                                        <TableCell>
-                                            {assign.soldCount} / {assign.assignedCount}
-                                        </TableCell>
-                                        <TableCell>₹{assign.totalAmount}</TableCell>
-                                        <TableCell>
-                                            <Badge variant="secondary">Settled</Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
-                                                title="Undo Settlement"
-                                                onClick={() => handleUndoSettlement(assign.id)}
-                                            >
-                                                <RotateCcw className="h-4 w-4" />
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                                {(() => {
+                                    const combinedHistory = [...returnedAssignments, ...settledAssignments]
+                                        .filter(a => matchesFilter(a.returnDate));
+
+                                    // Sort by Status (Unsettled first), then by Return Date (Desc), then by ID
+                                    combinedHistory.sort((a, b) => {
+                                        // 1. Status Priority: Unsettled (Returned) before Settled
+                                        const isSettledA = a.status === 'Settled';
+                                        const isSettledB = b.status === 'Settled';
+                                        if (isSettledA !== isSettledB) return isSettledA ? 1 : -1;
+
+                                        // 2. Date Priority
+                                        const dateA = a.returnDate ? new Date(a.returnDate).getTime() : 0;
+                                        const dateB = b.returnDate ? new Date(b.returnDate).getTime() : 0;
+                                        return dateB - dateA || b.id - a.id;
+                                    });
+
+                                    if (combinedHistory.length === 0) {
+                                        return <TableRow><TableCell colSpan={8} className="text-center py-8 text-gray-500">No history records found.</TableCell></TableRow>;
+                                    }
+
+                                    return combinedHistory.map(assign => {
+                                        const isSettled = assign.status === 'Settled';
+                                        const diff = assign.difference || 0;
+                                        const isSelected = selectedAssignmentIds.includes(assign.id);
+
+                                        return (
+                                            <TableRow key={assign.id} className={!isSettled ? "bg-orange-50/50" : ""}>
+                                                <TableCell>
+                                                    {!isSettled && (
+                                                        <Checkbox
+                                                            checked={isSelected}
+                                                            onCheckedChange={() => toggleSelection(assign.id)}
+                                                        />
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="text-sm text-gray-500">
+                                                    {assign.returnDate ? new Date(assign.returnDate).toLocaleDateString('en-GB') : '-'}
+                                                </TableCell>
+                                                <TableCell className="font-medium">{assign.staff.name}</TableCell>
+                                                <TableCell>
+                                                    <div className="text-sm">{assign.ticketType.name}</div>
+                                                    <div className="text-xs text-gray-400">{assign.seriesLabel}</div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    {assign.soldCount} <span className="text-gray-400">/ {assign.assignedCount}</span>
+                                                </TableCell>
+                                                <TableCell>
+                                                    {isSettled ? (
+                                                        <div className="text-xs">
+                                                            <div className="text-green-700">C: ₹{(assign.cashReceived || 0).toLocaleString()}</div>
+                                                            <div className="text-blue-700">U: ₹{(assign.upiReceived || 0).toLocaleString()}</div>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-gray-400 text-xs">-</span>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {isSettled ? (
+                                                        <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">Settled</Badge>
+                                                    ) : (
+                                                        <div className="flex flex-col">
+                                                            <Badge variant="secondary" className="w-fit mb-1">Returned</Badge>
+                                                            {diff !== 0 && (
+                                                                <span className={`text-xs font-bold ${diff < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                                                    {diff < 0 ? 'Short' : 'Excess'}: ₹{Math.abs(diff)}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    {isSettled ? (
+                                                        <div className="flex justify-end gap-1">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                                                title="Edit Amount"
+                                                                onClick={() => {
+                                                                    setEditSettlementData({
+                                                                        assignmentId: assign.id,
+                                                                        cash: (assign.cashReceived || 0).toFixed(2),
+                                                                        upi: (assign.upiReceived || 0).toFixed(2)
+                                                                    });
+                                                                    setOpenEditSettlement(true);
+                                                                }}
+                                                            >
+                                                                <Pencil className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                                                title="Undo Settlement"
+                                                                onClick={() => handleUndoSettlement(assign.id)}
+                                                            >
+                                                                <RotateCcw className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex justify-end gap-2">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                                                title="Undo Return (Back to Active)"
+                                                                onClick={() => handleUndoSettlement(assign.id)}
+                                                            >
+                                                                <RotateCcw className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button size="sm" onClick={() => handleFinalizeSettlement(assign.id)}>
+                                                                <CheckCircle className="h-4 w-4 mr-1" /> Settle
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    });
+                                })()}
                             </TableBody>
                         </Table>
                     </div>
                 </TabsContent>
 
-                <TabsContent value="returned-history">
-                    <div className="border rounded-md bg-white">
+                <TabsContent value="balances">
+                    <style type="text/css" media="print">
+                        {`
+                            @media print {
+                                body { visibility: hidden; }
+                                #printable-balances { visibility: visible; position: absolute; left: 0; top: 0; width: 100%; }
+                            }
+                        `}
+                    </style>
+                    <div className="flex justify-between items-center mb-2">
+                        <div className="no-print"><FilterControls /></div>
+                        <Button variant="outline" size="sm" onClick={handleExportBalancesCSV} className="gap-2 no-print mr-2">
+                            <Download className="h-4 w-4" /> Download CSV
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-2 no-print">
+                            <Printer className="h-4 w-4" /> Print Report
+                        </Button>
+                    </div>
+                    <div id="printable-balances" className="border rounded-md bg-white print:border-none print:shadow-none print:bg-white print:p-8">
+                        <div className="hidden print:block mb-4 text-center">
+                            <h2 className="text-xl font-bold">Staff Account Balances</h2>
+                            <p className="text-gray-500 text-sm">Generated on {new Date().toLocaleDateString()}</p>
+                        </div>
                         <Table>
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Staff Name</TableHead>
+                                    <TableHead>Date</TableHead>
                                     <TableHead>Item</TableHead>
-                                    <TableHead>Return Date</TableHead>
-                                    <TableHead>Sold / Total</TableHead>
-                                    <TableHead>Short / Excess</TableHead>
-                                    <TableHead className="text-right">Action</TableHead>
+                                    <TableHead className="text-right text-green-700">Excess</TableHead>
+                                    <TableHead className="text-right text-red-600">Short</TableHead>
+                                    <TableHead className="text-center no-print">Action</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {returnedAssignments.map(assign => {
-                                    const diff = assign.difference || 0;
+                                {(() => {
+                                    // 1. Filter Raw List ensuring non-zero difference
+                                    const rawList = [...returnedAssignments, ...settledAssignments]
+                                        .filter(a => (a.difference || 0) !== 0 && matchesFilter(a.returnDate));
+
+                                    // 2. Group by Staff ID
+                                    interface StaffGroup {
+                                        staffId: number;
+                                        staffName: string;
+                                        entries: typeof rawList;
+                                        totalExcess: number;
+                                        totalShort: number;
+                                    }
+
+                                    const groups: Record<number, StaffGroup> = {};
+
+                                    rawList.forEach(item => {
+                                        if (!groups[item.staffId]) {
+                                            groups[item.staffId] = {
+                                                staffId: item.staffId,
+                                                staffName: item.staff.name,
+                                                entries: [],
+                                                totalExcess: 0,
+                                                totalShort: 0
+                                            };
+                                        }
+                                        groups[item.staffId].entries.push(item);
+
+                                        const diff = item.difference || 0;
+                                        if (diff > 0) groups[item.staffId].totalExcess += diff;
+                                        else groups[item.staffId].totalShort += Math.abs(diff);
+                                    });
+
+                                    // 3. Sort Groups by Staff Name
+                                    const sortedGroups = Object.values(groups).sort((a, b) => a.staffName.localeCompare(b.staffName));
+
+                                    if (sortedGroups.length === 0) {
+                                        return <TableRow><TableCell colSpan={6} className="text-center text-gray-500">No discrepancies found.</TableCell></TableRow>;
+                                    }
+
+                                    const grandTotalExcess = sortedGroups.reduce((sum, g) => sum + g.totalExcess, 0);
+                                    const grandTotalShort = sortedGroups.reduce((sum, g) => sum + g.totalShort, 0);
+
                                     return (
-                                        <TableRow key={assign.id}>
-                                            <TableCell className="font-medium">{assign.staff.name}</TableCell>
-                                            <TableCell>{assign.ticketType.name}</TableCell>
-                                            <TableCell className="text-sm text-gray-500">
-                                                {assign.returnDate ? new Date(assign.returnDate).toLocaleDateString('en-GB') : '-'}
-                                            </TableCell>
-                                            <TableCell>{assign.soldCount} / {assign.assignedCount}</TableCell>
-                                            <TableCell>
-                                                {diff === 0 ? (
-                                                    <span className="text-gray-400">-</span>
-                                                ) : diff < 0 ? (
-                                                    <span className="text-red-600 font-bold">Short: ₹{Math.abs(diff).toFixed(2)}</span>
-                                                ) : (
-                                                    <span className="text-green-600 font-bold">Excess: ₹{diff.toFixed(2)}</span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="text-right flex justify-end gap-2">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-8 w-8 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
-                                                    title="Undo Return"
-                                                    onClick={() => handleUndoSettlement(assign.id)}
-                                                >
-                                                    <RotateCcw className="h-4 w-4" />
-                                                </Button>
-                                                <Button size="sm" onClick={() => handleFinalizeSettlement(assign.id)}>
-                                                    <CheckCircle className="h-4 w-4 mr-1" /> Settle
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
+                                        <>
+                                            {sortedGroups.map(group => (
+                                                <React.Fragment key={group.staffId}>
+                                                    {/* Summary Row */}
+                                                    <TableRow key={`summary-${group.staffId}`} className="bg-slate-100 hover:bg-slate-200 font-semibold border-t-2 border-slate-200">
+                                                        <TableCell className="text-base text-slate-800">{group.staffName}</TableCell>
+                                                        <TableCell colSpan={2} className="text-right text-xs text-slate-500 uppercase tracking-widest pt-3">Total Balance:</TableCell>
+                                                        <TableCell className="text-right text-green-700 font-bold bg-green-50/50">
+                                                            {group.totalExcess > 0 ? `₹${group.totalExcess.toFixed(2)}` : '-'}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-red-600 font-bold bg-red-50/50">
+                                                            {group.totalShort > 0 ? `₹${group.totalShort.toFixed(2)}` : '-'}
+                                                        </TableCell>
+                                                        <TableCell></TableCell>
+                                                    </TableRow>
+
+                                                    {/* Detail Rows */}
+                                                    {group.entries.sort((a, b) => new Date(b.returnDate!).getTime() - new Date(a.returnDate!).getTime()).map(entry => {
+                                                        const diff = entry.difference || 0;
+                                                        return (
+                                                            <TableRow key={`entry-${entry.id}`} className="hover:bg-gray-50 text-sm">
+                                                                <TableCell className="pl-8 text-gray-400">↳</TableCell>
+                                                                <TableCell>{entry.returnDate ? new Date(entry.returnDate).toLocaleDateString('en-GB') : '-'}</TableCell>
+                                                                <TableCell>{entry.ticketType.name}</TableCell>
+                                                                <TableCell className="text-right font-mono text-green-600">
+                                                                    {diff > 0 ? `₹${diff.toFixed(2)}` : ''}
+                                                                </TableCell>
+                                                                <TableCell className="text-right font-mono text-red-500">
+                                                                    {diff < 0 ? `₹${Math.abs(diff).toFixed(2)}` : ''}
+                                                                </TableCell>
+                                                                <TableCell className="text-center no-print">
+                                                                    <Button size="sm" variant="ghost" className="h-6 text-xs text-gray-400" disabled>
+                                                                        View
+                                                                    </Button>
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        );
+                                                    })}
+                                                </React.Fragment>
+                                            ))}
+                                            {/* GRAND TOTAL ROW */}
+                                            <TableRow className="bg-gray-900 text-white font-bold text-lg border-t-4 border-gray-600">
+                                                <TableCell colSpan={3} className="text-right uppercase tracking-widest">Grand Total:</TableCell>
+                                                <TableCell className="text-right text-green-400">
+                                                    {grandTotalExcess > 0 ? `₹${grandTotalExcess.toFixed(2)}` : '-'}
+                                                </TableCell>
+                                                <TableCell className="text-right text-red-400">
+                                                    {grandTotalShort > 0 ? `₹${grandTotalShort.toFixed(2)}` : '-'}
+                                                </TableCell>
+                                                <TableCell></TableCell>
+                                            </TableRow>
+                                        </>
                                     );
-                                })}
-                                {returnedAssignments.length === 0 && <TableRow><TableCell colSpan={6} className="text-center p-4">No pending returns.</TableCell></TableRow>}
+                                })()}
                             </TableBody>
                         </Table>
                     </div>
@@ -1289,34 +1564,7 @@ export function StaffAllocationInterface({
             </Dialog>
 
             {/* STAFF BALANCE DIALOG */}
-            <Dialog open={openBalanceReport} onOpenChange={setOpenBalanceReport}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Staff Account Balances</DialogTitle>
-                    </DialogHeader>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Staff Name</TableHead>
-                                <TableHead className="text-red-600">Total Shortage</TableHead>
-                                <TableHead className="text-green-600">Total Excess</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {getStaffBalances().map((b, i) => (
-                                <TableRow key={i}>
-                                    <TableCell className="font-bold">{b.name}</TableCell>
-                                    <TableCell className="text-red-600 font-mono">₹{b.short}</TableCell>
-                                    <TableCell className="text-green-600 font-mono">₹{b.excess}</TableCell>
-                                </TableRow>
-                            ))}
-                            {getStaffBalances().length === 0 && (
-                                <TableRow><TableCell colSpan={3} className="text-center text-gray-500">No discrepancies found.</TableCell></TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
-                </DialogContent>
-            </Dialog>
+
 
             {/* EDIT DIALOG */}
             <Dialog open={openEdit} onOpenChange={setOpenEdit}>
@@ -1404,7 +1652,7 @@ export function StaffAllocationInterface({
                                     <TableHead>Staff / Item</TableHead>
                                     <TableHead>Assigned</TableHead>
                                     <TableHead>Range</TableHead>
-                                    <TableHead className="w-[120px]">First Return No.</TableHead>
+                                    {!settleOnlyMode && <TableHead className="w-[120px]">First Return No.</TableHead>}
                                     <TableHead className="w-[100px]">Returns</TableHead>
                                     <TableHead className="text-right">Sold Value</TableHead>
                                 </TableRow>
@@ -1430,16 +1678,18 @@ export function StaffAllocationInterface({
                                                 <TableCell className="text-xs break-words max-w-[150px]">
                                                     {group.seriesLabels.join(', ')}
                                                 </TableCell>
-                                                <TableCell>
-                                                    <Input
-                                                        type="number"
-                                                        placeholder="Last Tix #"
-                                                        className="h-8 text-xs border-blue-300"
-                                                        value={bulkFirstReturns[group.key] || ''}
-                                                        onChange={(e) => handleBulkFirstReturnChange(group.key, e.target.value, group)}
-                                                        autoFocus
-                                                    />
-                                                </TableCell>
+                                                {!settleOnlyMode && (
+                                                    <TableCell>
+                                                        <Input
+                                                            type="number"
+                                                            placeholder="Last Tix #"
+                                                            className="h-8 text-xs border-blue-300"
+                                                            value={bulkFirstReturns[group.key] || ''}
+                                                            onChange={(e) => handleBulkFirstReturnChange(group.key, e.target.value, group)}
+                                                            autoFocus
+                                                        />
+                                                    </TableCell>
+                                                )}
                                                 <TableCell>
                                                     <div className="h-8 flex items-center justify-center font-bold bg-gray-50 rounded border border-gray-200 text-gray-700">
                                                         {ret}
@@ -1619,74 +1869,7 @@ export function StaffAllocationInterface({
                 </DialogContent>
             </Dialog>
             {/* COUNTER ASSIGN DIALOG (From AssignTicketsInterface) */}
-            <Dialog open={openAssignBatch} onOpenChange={setOpenAssignBatch}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Assign Stock to {selectedItemForBatch?.name}</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleBatchSubmit} className="space-y-4">
-                        {error && (
-                            <div className="bg-red-50 text-red-500 p-3 rounded-md text-sm flex items-center gap-2">
-                                <AlertCircle className="h-4 w-4" /> {error}
-                            </div>
-                        )}
 
-                        <div className="p-3 bg-blue-50 text-blue-700 rounded-md text-sm mb-4">
-                            Category: <strong>{selectedItemForBatch?.category}</strong>, Price: <strong>₹{selectedItemForBatch?.price}</strong>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Select Stock Bundle</Label>
-                            {compatibleStockBatch.length > 0 ? (
-                                <Select name="inventoryId" required>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select available Series" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {compatibleStockBatch.map(stock => {
-                                            const avail = stock.endNumber - stock.currentNumber + 1;
-                                            return (
-                                                <SelectItem key={stock.id} value={stock.id.toString()}>
-                                                    {stock.seriesLabel} (#{stock.currentNumber}-{stock.endNumber}) - Qty: {avail}
-                                                </SelectItem>
-                                            );
-                                        })}
-                                    </SelectContent>
-                                </Select>
-                            ) : (
-                                <div className="text-red-500 text-sm border border-red-200 bg-red-50 p-2 rounded">
-                                    No compatible stock available! Please add stock with same Category and Price.
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="quantity">Quantity to Assign</Label>
-                            <Input
-                                id="quantity"
-                                name="quantity"
-                                type="number"
-                                min="1"
-                                placeholder="e.g. 100"
-                                required
-                                disabled={compatibleStockBatch.length === 0}
-                            />
-                            <p className="text-xs text-gray-500">
-                                Enter the number of tickets to issue to the counter.
-                            </p>
-                        </div>
-
-                        <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setOpenAssignBatch(false)}>
-                                Cancel
-                            </Button>
-                            <Button type="submit" disabled={loadingBatch || compatibleStockBatch.length === 0}>
-                                {loadingBatch ? 'Assigning...' : 'Confirm Assignment'}
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
 
             {/* BULK ASSIGN QUEUE DIALOG */}
             <Dialog open={openBulkAssign} onOpenChange={setOpenBulkAssign}>
@@ -1838,6 +2021,38 @@ export function StaffAllocationInterface({
                         <Button variant="outline" onClick={() => setOpenBulkAssign(false)}>Cancel</Button>
                         <Button onClick={handleBulkAssignSubmit} disabled={bulkAssignLoading || pendingAssignments.length === 0} className="w-40">
                             {bulkAssignLoading ? 'Processing...' : `Confirm All (${pendingAssignments.length})`}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={openEditSettlement} onOpenChange={setOpenEditSettlement}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit Settlement Amount</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Cash Received</Label>
+                            <Input
+                                type="number"
+                                value={editSettlementData.cash}
+                                onChange={(e) => setEditSettlementData(prev => ({ ...prev, cash: e.target.value }))}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>UPI Received</Label>
+                            <Input
+                                type="number"
+                                value={editSettlementData.upi}
+                                onChange={(e) => setEditSettlementData(prev => ({ ...prev, upi: e.target.value }))}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setOpenEditSettlement(false)}>Cancel</Button>
+                        <Button onClick={handleUpdateSettlement} disabled={editSettlementLoading}>
+                            {editSettlementLoading ? 'Saving...' : 'Save Changes'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

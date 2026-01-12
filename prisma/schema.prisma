@@ -29,6 +29,7 @@ model Event {
   auditLogs              AuditLog[]
   invoices               Invoice[]
   transactions           Transaction[]
+  daybookClosings        DaybookClosing[]
   createdAt              DateTime               @default(now())
   updatedAt              DateTime               @updatedAt
 }
@@ -593,4 +594,21 @@ model ApprovalRequest {
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model DaybookClosing {
+  id             Int      @id @default(autoincrement())
+  eventId        Int
+  event          Event    @relation(fields: [eventId], references: [id])
+  date           DateTime // Only date part matters
+  openingBalance Float
+  closingBalance Float
+  totalIncome    Float
+  totalExpense   Float
+  status         String   @default("Draft") // Draft, Closed
+  remarks        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  @@unique([eventId, date])
 }

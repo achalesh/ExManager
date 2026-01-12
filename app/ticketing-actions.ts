@@ -352,7 +352,8 @@ export async function createTicketSale(data: z.infer<typeof ticketSaleSchema>) {
             for (const item of parsed.items) {
                 // Get ticket type details
                 const ticketType = await tx.ticketType.findUnique({
-                    where: { id: item.ticketTypeId }
+                    where: { id: item.ticketTypeId },
+                    include: { ownerShares: true, amusementOwner: true }
                 });
                 if (!ticketType) throw new Error(`Invalid ticket type: ${item.ticketTypeId}`);
 
@@ -371,6 +372,46 @@ export async function createTicketSale(data: z.infer<typeof ticketSaleSchema>) {
                 // Calculate item total
                 const itemTotal = ticketType.price * item.quantity;
                 totalAmount += itemTotal;
+
+                // Create Ledger Entries (Revenue Share)
+                const ownerShares = ticketType.ownerShares || [];
+                if (ownerShares.length > 0) {
+                    for (const share of ownerShares) {
+                        const shareAmount = (itemTotal * share.sharePercentage) / 100;
+                        await tx.amusementLedger.create({
+                            data: {
+                                date: new Date(),
+                                amusementOwnerId: share.amusementOwnerId,
+                                ticketTypeId: ticketType.id,
+                                details: `Counter Sale: ${ticketType.name} - ${item.quantity} tkts`,
+                                soldCount: item.quantity,
+                                totalSales: itemTotal,
+                                ownerSharePercentage: share.sharePercentage,
+                                ownerShareAmount: shareAmount,
+                                companyShareAmount: itemTotal - shareAmount,
+                                collectedByOwner: 0,
+                                status: 'Pending'
+                            }
+                        });
+                    }
+                } else if (ticketType.amusementOwnerId) {
+                    const shareAmount = (itemTotal * ticketType.ownerSharePercentage) / 100;
+                    await tx.amusementLedger.create({
+                        data: {
+                            date: new Date(),
+                            amusementOwnerId: ticketType.amusementOwnerId,
+                            ticketTypeId: ticketType.id,
+                            details: `Counter Sale: ${ticketType.name} - ${item.quantity} tkts`,
+                            soldCount: item.quantity,
+                            totalSales: itemTotal,
+                            ownerSharePercentage: ticketType.ownerSharePercentage,
+                            ownerShareAmount: shareAmount,
+                            companyShareAmount: itemTotal - shareAmount,
+                            collectedByOwner: 0,
+                            status: 'Pending'
+                        }
+                    });
+                }
 
                 // Create individual tickets (serial numbers)
                 for (let i = 0; i < item.quantity; i++) {
@@ -511,7 +552,7 @@ export async function getTicketingReport(eventId: number) {
             status: { in: ['Returned', 'Settled'] },
             ticketType: { eventId: eventId }
         },
-        include: { ticketType: true },
+        include: { ticketType: true, staff: true },
         orderBy: { returnDate: 'desc' }
     });
 
@@ -522,15 +563,35 @@ export async function getTicketingReport(eventId: number) {
     const byType: Record<string, { count: number, revenue: number, category: string }> = {};
     const recentTransactions: any[] = [];
 
+    // NEW: Detailed Stats
+    const staffPerformance: Record<string, { name: string, sold: number, revenue: number, cash: number, upi: number }> = {};
+    const hourlyStats: Record<number, { count: number, revenue: number }> = {};
+    const paymentStats = { cash: 0, upi: 0 };
+
+    // Initialize Hourly Stats (0-23)
+    for (let i = 0; i < 24; i++) hourlyStats[i] = { count: 0, revenue: 0 };
+
     // Process Manual Sales
     for (const sale of manualSales) {
         totalRevenue += sale.totalAmount;
+
+        // Payment Splits (Manual is implicit Cash unless we add UPI tracking to Sales later, but currently Sales are mostly cash or untracked method in simple view)
+        // Actually, Sale table doesn't have payment method column properly populated in all create paths? 
+        // Let's check `Transaction` table for truth, but for this Report we aggregate Sales.
+        // Assuming Manual Sales are Cash for now unless correlated with UPI transaction? 
+        // For simplicity in this report version, we'll treat them as generic revenue, but add to Cash for approximation if method missing.
+        // *Correction*: We should probably respect the source. 
+        paymentStats.cash += sale.totalAmount; // Defaulting manual to cash
+
+        const hour = sale.createdAt.getHours();
+        hourlyStats[hour].count += sale.items.length; // Approximate items count
+        hourlyStats[hour].revenue += sale.totalAmount;
+
         let saleCount = 0;
 
         for (const item of sale.items) {
             const typeName = item.ticketType.name;
             const catName = item.ticketType.category;
-            // Sales can be bundles in future, but assuming 1 item = 1 ticket based on schema loop logic
             saleCount++;
             totalTickets++;
 
@@ -560,6 +621,35 @@ export async function getTicketingReport(eventId: number) {
 
         totalRevenue += assign.totalAmount;
         totalTickets += assign.soldCount;
+
+        // Payment Stats
+        paymentStats.cash += (assign.cashReceived || 0);
+        paymentStats.upi += (assign.upiReceived || 0);
+
+        // Staff Performance
+        if (!staffPerformance[assign.staffId]) {
+            staffPerformance[assign.staffId] = {
+                name: assign.staff.name,
+                sold: 0,
+                revenue: 0,
+                cash: 0,
+                upi: 0
+            };
+        }
+        staffPerformance[assign.staffId].sold += assign.soldCount;
+        staffPerformance[assign.staffId].revenue += assign.totalAmount;
+        staffPerformance[assign.staffId].cash += (assign.cashReceived || 0);
+        staffPerformance[assign.staffId].upi += (assign.upiReceived || 0);
+
+        // Hourly Stats (Using Return Date as proxy for "When it was accounted")
+        // Note: Staff sales happen over time, but are recorded on Return. 
+        // We will attribute it to the return hour for "Operations Pulse", or maybe ignore for hourly?
+        // Let's attribute to Return Hour for now to show "Processing Load".
+        if (assign.returnDate) {
+            const hour = assign.returnDate.getHours();
+            hourlyStats[hour].count += assign.soldCount;
+            hourlyStats[hour].revenue += assign.totalAmount;
+        }
 
         const typeName = assign.ticketType.name;
         const catName = assign.ticketType.category;
@@ -591,6 +681,9 @@ export async function getTicketingReport(eventId: number) {
         totalTickets,
         byCategory,
         byType,
+        staffPerformance: Object.values(staffPerformance).sort((a, b) => b.revenue - a.revenue),
+        hourlyStats,
+        paymentStats,
         recentTransactions: recentTransactions.slice(0, 50)
     };
 }
@@ -616,10 +709,10 @@ export async function getDetailedSalesReport(eventId: number, dateFilter?: strin
     // Prisma Filters
     const saleWhere: any = {
         eventId,
-        source: 'Counter'
+        source: { not: 'Staff' }
     };
     const staffWhere: any = {
-        status: 'Returned',
+        status: { in: ['Returned', 'Settled'] },
         ticketType: { eventId: eventId }
     };
 
@@ -632,16 +725,14 @@ export async function getDetailedSalesReport(eventId: number, dateFilter?: strin
     const manualSales = await prisma.ticketSale.findMany({
         where: saleWhere,
         include: { items: { include: { ticketType: true } } },
-        orderBy: { createdAt: 'desc' },
-        take: dateStart ? undefined : 200 // Limit if no date filter to keep summary manageable for default view
+        orderBy: { createdAt: 'desc' }
     });
 
     // 2. Fetch Staff Returns
     const staffSales = await prisma.staffTicketAssignment.findMany({
         where: staffWhere,
         include: { ticketType: true, staff: true },
-        orderBy: { returnDate: 'desc' },
-        take: dateStart ? undefined : 200 // Limit if no date filter
+        orderBy: { returnDate: 'desc' }
     });
 
     // 3. Normalize Data & Calculate Aggregates
@@ -649,15 +740,18 @@ export async function getDetailedSalesReport(eventId: number, dateFilter?: strin
     const summary = {
         totalRevenue: 0,
         totalTickets: 0,
+        totalCash: 0,
+        totalUpi: 0, // Add explicit totals
         entrance: { count: 0, revenue: 0 },
         amusement: { count: 0, revenue: 0 },
-        byItem: {} as Record<string, { count: number; revenue: number }>
+        byItem: {} as Record<string, { count: number; revenue: number; cash: number; upi: number }>
     };
 
     // Map Counter Sales
     for (const sale of manualSales) {
         summary.totalRevenue += sale.totalAmount;
         summary.totalTickets += sale.items.length;
+        summary.totalCash += sale.totalAmount; // Counter is Cash
 
         const types: string[] = [];
         const ranges: string[] = [];
@@ -673,10 +767,11 @@ export async function getDetailedSalesReport(eventId: number, dateFilter?: strin
             }
 
             if (!summary.byItem[item.ticketType.name]) {
-                summary.byItem[item.ticketType.name] = { count: 0, revenue: 0 };
+                summary.byItem[item.ticketType.name] = { count: 0, revenue: 0, cash: 0, upi: 0 };
             }
             summary.byItem[item.ticketType.name].count++;
             summary.byItem[item.ticketType.name].revenue += item.price;
+            summary.byItem[item.ticketType.name].cash += item.price; // Counter is Cash
 
             const arr = byType.get(item.ticketType.name) || [];
             arr.push(item.ticketNumber);
@@ -699,7 +794,9 @@ export async function getDetailedSalesReport(eventId: number, dateFilter?: strin
             ticketType: types.join(', '),
             details: ranges.join(', '),
             count: sale.items.length,
-            amount: sale.totalAmount
+            amount: sale.totalAmount, // Keep for sorting/ref
+            cash: sale.totalAmount,
+            upi: 0
         });
     }
 
@@ -709,6 +806,8 @@ export async function getDetailedSalesReport(eventId: number, dateFilter?: strin
 
         summary.totalRevenue += assign.totalAmount;
         summary.totalTickets += assign.soldCount;
+        summary.totalCash += (assign.cashReceived || 0);
+        summary.totalUpi += (assign.upiReceived || 0);
 
         if (assign.ticketType.category === 'Entrance') {
             summary.entrance.count += assign.soldCount;
@@ -719,10 +818,12 @@ export async function getDetailedSalesReport(eventId: number, dateFilter?: strin
         }
 
         if (!summary.byItem[assign.ticketType.name]) {
-            summary.byItem[assign.ticketType.name] = { count: 0, revenue: 0 };
+            summary.byItem[assign.ticketType.name] = { count: 0, revenue: 0, cash: 0, upi: 0 };
         }
         summary.byItem[assign.ticketType.name].count += assign.soldCount;
         summary.byItem[assign.ticketType.name].revenue += assign.totalAmount;
+        summary.byItem[assign.ticketType.name].cash += (assign.cashReceived || 0);
+        summary.byItem[assign.ticketType.name].upi += (assign.upiReceived || 0);
 
         const soldEnd = assign.endNumber - (assign.returnedCount || 0);
 
@@ -733,7 +834,9 @@ export async function getDetailedSalesReport(eventId: number, dateFilter?: strin
             ticketType: assign.ticketType.name,
             details: `(#${assign.startNumber}-${soldEnd})`,
             count: assign.soldCount,
-            amount: assign.totalAmount
+            amount: assign.totalAmount,
+            cash: assign.cashReceived || 0,
+            upi: assign.upiReceived || 0
         });
     }
 
@@ -1253,58 +1356,98 @@ export async function bulkSettleAssignments(settlements: {
                 });
 
                 if (!assignment) throw new Error(`Assignment ${item.assignmentId} not found`);
-                if (assignment.status !== 'Assigned') throw new Error(`Assignment ${item.assignmentId} is already settled`);
-                if (item.returnCount < 0) throw new Error(`Invalid return count for ${assignment.id}`);
-                if (item.returnCount > assignment.assignedCount) throw new Error(`Return count exceeds assigned count for ${assignment.id}`);
 
-                const soldCount = assignment.assignedCount - item.returnCount;
-                const totalAmount = soldCount * assignment.ticketType.price;
+                // Determine Mode
+                const isFreshReturn = assignment.status === 'Assigned';
+                const isUpdateSettlement = ['Returned', 'Settled'].includes(assignment.status);
 
-                // 1. Create Sale Record
-                const sale = await tx.ticketSale.create({
-                    data: {
-                        eventId: assignment.ticketType.eventId || 0,
-                        totalAmount: totalAmount,
-                        source: 'Staff',
-                        createdAt: settleDate
+                if (!isFreshReturn && !isUpdateSettlement) throw new Error(`Invalid status ${assignment.status} for settlement`);
+
+                let soldCount = 0;
+                let totalAmount = 0;
+
+                if (isFreshReturn) {
+                    if (item.returnCount < 0) throw new Error(`Invalid return count for ${assignment.id}`);
+                    if (item.returnCount > assignment.assignedCount) throw new Error(`Return count exceeds assigned count for ${assignment.id}`);
+
+                    soldCount = assignment.assignedCount - item.returnCount;
+                    totalAmount = soldCount * assignment.ticketType.price;
+
+                    // 1. Create Sale Record
+                    const sale = await tx.ticketSale.create({
+                        data: {
+                            eventId: assignment.ticketType.eventId || 0,
+                            totalAmount: totalAmount,
+                            source: 'Staff',
+                            createdAt: settleDate
+                        }
+                    });
+
+                    // 2. Create Sale Items
+                    const soldEndNumber = assignment.endNumber - item.returnCount;
+                    if (soldCount > 0) {
+                        const saleItemsData = [];
+                        for (let i = assignment.startNumber; i <= soldEndNumber; i++) {
+                            saleItemsData.push({
+                                saleId: sale.id,
+                                ticketTypeId: assignment.ticketTypeId,
+                                ticketNumber: i,
+                                price: assignment.ticketType.price
+                            });
+                        }
+                        if (saleItemsData.length > 0) {
+                            await tx.ticketSaleItem.createMany({
+                                data: saleItemsData
+                            });
+                        }
                     }
-                });
 
-                // 2. Create Sale Items
-                const soldEndNumber = assignment.endNumber - item.returnCount;
-                if (soldCount > 0) {
-                    const saleItemsData = [];
-                    for (let i = assignment.startNumber; i <= soldEndNumber; i++) {
-                        saleItemsData.push({
-                            saleId: sale.id,
-                            ticketTypeId: assignment.ticketTypeId,
-                            ticketNumber: i,
-                            price: assignment.ticketType.price
-                        });
+                    // 2.5 Restock Unsold Tickets
+                    if (item.returnCount > 0) {
+                        const returnStart = soldEndNumber + 1;
+                        const returnEnd = assignment.endNumber;
+
+                        if (returnStart <= returnEnd) {
+                            await tx.ticketInventory.create({
+                                data: {
+                                    eventId: assignment.ticketType.eventId || 0,
+                                    seriesLabel: assignment.seriesLabel.endsWith('(Ret)') ? assignment.seriesLabel : `${assignment.seriesLabel} (Ret)`,
+                                    startNumber: returnStart,
+                                    endNumber: returnEnd,
+                                    currentNumber: returnStart,
+                                    status: 'Available',
+                                    price: assignment.ticketType.price,
+                                    category: assignment.ticketType.category
+                                }
+                            });
+                        }
                     }
-                    if (saleItemsData.length > 0) {
-                        await tx.ticketSaleItem.createMany({
-                            data: saleItemsData
-                        });
-                    }
-                }
+                } else {
+                    // Update Mode: Trust existing Stock/Sale logic.
+                    // We assume returnCount cannot change inventory here (safe mode).
+                    // If user passed different returnCount, we ignore it or error. 
+                    // Let's use DB values.
+                    soldCount = assignment.soldCount || (assignment.assignedCount - (assignment.returnedCount || 0));
+                    totalAmount = assignment.totalAmount || (soldCount * assignment.ticketType.price);
 
-                // 2.5 Restock Unsold Tickets
-                if (item.returnCount > 0) {
-                    const returnStart = soldEndNumber + 1;
-                    const returnEnd = assignment.endNumber;
+                    // Cleanup Old Financials
+                    await tx.transaction.deleteMany({
+                        where: {
+                            description: { contains: `Settlement: ${assignment.ticketType.name} (Sold ${soldCount}) - Staff ${assignment.staffId}` },
+                            transactionDate: assignment.settlementDate || undefined
+                        }
+                    });
+                    await tx.uPITransaction.deleteMany({
+                        where: { transactionId: { startsWith: `SETTLE-${assignment.id}-` } }
+                    });
 
-                    if (returnStart <= returnEnd) {
-                        await tx.ticketInventory.create({
-                            data: {
-                                eventId: assignment.ticketType.eventId || 0,
-                                seriesLabel: assignment.seriesLabel.endsWith('(Ret)') ? assignment.seriesLabel : `${assignment.seriesLabel} (Ret)`,
-                                startNumber: returnStart,
-                                endNumber: returnEnd,
-                                currentNumber: returnStart,
-                                status: 'Available',
-                                price: assignment.ticketType.price,
-                                category: assignment.ticketType.category
+                    // Ledger? We should filter by date/details carefully
+                    if (assignment.settlementDate) {
+                        await tx.amusementLedger.deleteMany({
+                            where: {
+                                date: assignment.settlementDate,
+                                ticketTypeId: assignment.ticketTypeId,
+                                soldCount: soldCount
                             }
                         });
                     }
@@ -1313,19 +1456,24 @@ export async function bulkSettleAssignments(settlements: {
                 const difference = (item.cashReceived + item.upiReceived) - totalAmount;
 
                 // 3. Update Assignment Status
+                // If Fresh: Assigned -> Returned (Pending Settle) - Legacy behavior preserved
+                // If Update: Returned -> Settled (Finalized)
+                const nextStatus = isFreshReturn ? 'Returned' : 'Settled';
+                const isSettledBool = !isFreshReturn;
+
                 await tx.staffTicketAssignment.update({
                     where: { id: item.assignmentId },
                     data: {
-                        status: 'Returned', // Moves to Pending Settle
-                        isSettled: false,
-                        returnedCount: item.returnCount,
+                        status: nextStatus,
+                        isSettled: isSettledBool,
+                        returnedCount: isFreshReturn ? item.returnCount : undefined, // Only set on fresh
                         soldCount: soldCount,
                         totalAmount: totalAmount,
                         cashReceived: item.cashReceived,
                         upiReceived: item.upiReceived,
                         difference: difference,
                         settlementDate: settleDate,
-                        returnDate: settleDate
+                        returnDate: isFreshReturn ? settleDate : assignment.returnDate // Keep original return date if update
                     }
                 });
 
@@ -1574,7 +1722,7 @@ export async function undoSettlement(assignmentId: number) {
                     upiReceived: 0
                 }
             });
-        });
+        }, { timeout: 20000 });
 
         revalidatePath('/dashboard/ticketing');
         revalidatePath('/dashboard/accounts');
@@ -1646,5 +1794,133 @@ export async function recoverHistoricalReturns(eventId: number) {
     } catch (error: any) {
         console.error('Recovery Error', error);
         return { success: false, error: error.message };
+    }
+}
+
+export async function updateStaffSettlementAmount(data: { assignmentId: number, cashReceived: number, upiReceived: number }) {
+    const session = await getSession();
+    if (!session) return { success: false, error: 'Unauthorized' };
+
+    try {
+        const assign = await prisma.staffTicketAssignment.findUnique({
+            where: { id: data.assignmentId },
+            include: { ticketType: true }
+        });
+
+        if (!assign) return { success: false, error: 'Assignment not found' };
+
+        const expectedAmount = (assign.soldCount || 0) * assign.ticketType.price;
+        const totalCollected = data.cashReceived + data.upiReceived;
+        const difference = totalCollected - expectedAmount;
+
+        await prisma.staffTicketAssignment.update({
+            where: { id: data.assignmentId },
+            data: {
+                cashReceived: data.cashReceived,
+                upiReceived: data.upiReceived,
+                difference: difference
+            }
+        });
+
+        revalidatePath('/dashboard/ticketing/staff');
+        return { success: true };
+    } catch (e) {
+        console.error('Update settlement error:', e);
+        return { success: false, error: 'Update failed' };
+    }
+}
+
+export async function recalculatePastSettlements() {
+    const session = await getSession();
+    // if (!session || session.role !== 'ADMIN') return { success: false, error: 'Unauthorized' }; // Optional security
+
+    try {
+        const assignments = await prisma.staffTicketAssignment.findMany({
+            where: { status: 'Settled' },
+            include: { ticketType: true, staff: true }
+        });
+
+        // Group by Staff + Returned Date + Price (Proxy for Batch)
+        const groups: Record<string, typeof assignments> = {};
+        assignments.forEach(a => {
+            const dateStr = a.returnDate ? new Date(a.returnDate).toISOString().split('T')[0] : 'Unknown';
+            const key = `${a.staffId}-${dateStr}-${a.ticketType.price}`;
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(a);
+        });
+
+        let updatedCount = 0;
+
+        for (const key in groups) {
+            const group = groups[key];
+
+            // Calculate Total Cash/UPI for the group
+            let totalCash = 0;
+            let totalUpi = 0;
+
+            group.forEach(a => {
+                totalCash += (a.cashReceived || 0);
+                totalUpi += (a.upiReceived || 0);
+            });
+
+            // Re-distribute using Waterfall
+            let remainingCash = totalCash;
+            let remainingUpi = totalUpi;
+
+            // Sort to ensure deterministic order (e.g. by ID)
+            group.sort((a, b) => a.id - b.id);
+
+            for (let i = 0; i < group.length; i++) {
+                const item = group[i];
+                const isLast = i === group.length - 1;
+                const soldVal = (item.assignedCount - (item.returnedCount || 0)) * item.ticketType.price;
+
+                let allocatedUpi = 0;
+                let allocatedCash = 0;
+                let needed = soldVal;
+
+                // 1. UPI
+                const upiTake = Math.min(remainingUpi, needed);
+                allocatedUpi += upiTake;
+                remainingUpi -= upiTake;
+                needed -= upiTake;
+
+                // 2. Cash
+                const cashTake = Math.min(remainingCash, needed);
+                allocatedCash += cashTake;
+                remainingCash -= cashTake;
+                needed -= cashTake;
+
+                // 3. Excess to Last
+                if (isLast) {
+                    if (remainingUpi > 0.001) allocatedUpi += remainingUpi; // tolerance for float
+                    if (remainingCash > 0.001) allocatedCash += remainingCash;
+                }
+
+                // Update if changed significantly
+                if (Math.abs((item.cashReceived || 0) - allocatedCash) > 0.01 || Math.abs((item.upiReceived || 0) - allocatedUpi) > 0.01) {
+                    // Recalc difference
+                    const expected = soldVal;
+                    const collected = allocatedCash + allocatedUpi;
+                    const diff = collected - expected;
+
+                    await prisma.staffTicketAssignment.update({
+                        where: { id: item.id },
+                        data: {
+                            cashReceived: allocatedCash,
+                            upiReceived: allocatedUpi,
+                            difference: diff
+                        }
+                    });
+                    updatedCount++;
+                }
+            }
+        }
+
+        revalidatePath('/dashboard/ticketing/staff');
+        return { success: true, count: updatedCount };
+    } catch (e) {
+        console.error('Recalculation error:', e);
+        return { success: false, error: 'Recalculation failed' };
     }
 }

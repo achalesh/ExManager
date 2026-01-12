@@ -169,7 +169,7 @@ export async function getReconciliationReport(dateStart?: string, dateEnd?: stri
                 gte: start,
                 lte: end
             },
-            status: 'Returned'
+            status: { in: ['Returned', 'Settled'] }
         },
         include: {
             ticketType: {

@@ -5,6 +5,7 @@ import { getInventory } from '@/app/inventory-actions';
 import { getEventStaff } from '@/app/staff-actions';
 import { StaffAllocationInterface } from '@/components/StaffAllocationInterface';
 
+// Force rebuild
 export default async function Page() {
     const session = await getSession();
     if (!session || !['Admin', 'Manager'].includes(session.roleName)) {
@@ -29,7 +30,10 @@ export default async function Page() {
         assignedDate: a.assignedDate,
         soldCount: a.soldCount ?? undefined,
         returnedCount: a.returnedCount ?? undefined,
-        totalAmount: a.totalAmount ?? undefined
+        totalAmount: a.totalAmount ?? undefined,
+        cashReceived: a.cashReceived ?? undefined,
+        upiReceived: a.upiReceived ?? undefined,
+        difference: a.difference ?? undefined
     }));
 
     return (

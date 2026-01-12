@@ -91,7 +91,6 @@ export function DashboardNav({ session }: DashboardNavProps) {
     ];
 
     const ticketingItems = [
-        { href: '/dashboard/ticketing', label: 'Ticket Counter', icon: Ticket, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/ticketing/staff', label: 'Allocations', icon: ArrowRightLeft, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/settings/tickets', label: 'Configuration', icon: Settings, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/settings/inventory', label: 'Stock Registry', icon: Package, roles: ['Admin', 'Manager'] },

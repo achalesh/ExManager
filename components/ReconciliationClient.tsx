@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { Loader2, Upload, FileUp } from 'lucide-react';
+import { Loader2, Upload, FileUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { uploadPhonePeCSV, getReconciliationReport } from '@/app/reconciliation-actions';
 import { toast } from 'sonner'; // Assuming sonner or use standard alert
 
@@ -71,12 +71,28 @@ export function ReconciliationClient() {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                 <div className="space-y-2">
                     <label className="text-sm font-medium">Reconciliation Date</label>
-                    <Input
-                        type="date"
-                        value={date}
-                        onChange={(e) => setDate(e.target.value)}
-                        className="w-[200px]"
-                    />
+                    <div className="flex items-center gap-2">
+                        <Button variant="outline" size="icon" onClick={() => {
+                            const d = new Date(date);
+                            d.setDate(d.getDate() - 1);
+                            setDate(d.toISOString().split('T')[0]);
+                        }}>
+                            <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <Input
+                            type="date"
+                            value={date}
+                            onChange={(e) => setDate(e.target.value)}
+                            className="w-[200px]"
+                        />
+                        <Button variant="outline" size="icon" onClick={() => {
+                            const d = new Date(date);
+                            d.setDate(d.getDate() + 1);
+                            setDate(d.toISOString().split('T')[0]);
+                        }}>
+                            <ChevronRight className="h-4 w-4" />
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-4">

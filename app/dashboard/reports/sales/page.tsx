@@ -93,11 +93,20 @@ export default async function DetailedSalesReportPage(props: {
                     {ticketTypenames.map(name => {
                         const item = report.summary.byItem[name];
                         return (
-                            <Card key={name} className="bg-white border-gray-200 shadow-sm">
+                            <Card key={name} className="bg-white border-gray-200 shadow-sm hover:shadow-md transition-shadow">
                                 <CardContent className="p-4">
                                     <div className="text-sm font-medium text-gray-500 truncate" title={name}>{name}</div>
                                     <div className="mt-1 text-lg font-bold text-gray-900">₹ {item.revenue.toLocaleString()}</div>
-                                    <div className="text-xs text-gray-500">{item.count} tickets</div>
+                                    <div className="text-xs text-gray-500 mb-2">{item.count} tickets</div>
+
+                                    <div className="flex justify-between items-center text-xs border-t pt-2">
+                                        <span className="text-green-600 font-semibold" title="Cash">
+                                            ₹{item.cash.toLocaleString()}
+                                        </span>
+                                        <span className="text-blue-600 font-semibold" title="UPI">
+                                            ₹{item.upi.toLocaleString()}
+                                        </span>
+                                    </div>
                                 </CardContent>
                             </Card>
                         );
@@ -143,13 +152,14 @@ export default async function DetailedSalesReportPage(props: {
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticket Type</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Serial No</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Qty</th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Cash</th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">UPI</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {report.rows.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                                        <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                                             No sales records found.
                                         </td>
                                     </tr>
@@ -179,13 +189,29 @@ export default async function DetailedSalesReportPage(props: {
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
                                                 {row.count}
                                             </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 text-right">
-                                                ₹ {row.amount}
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-700 text-right">
+                                                ₹ {row.cash}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-700 text-right">
+                                                ₹ {row.upi}
                                             </td>
                                         </tr>
                                     ))
                                 )}
                             </tbody>
+                            <tfoot className="bg-gray-50 font-bold">
+                                <tr>
+                                    <td colSpan={5} className="px-6 py-4 text-right text-sm text-gray-900">
+                                        Grand Total (Filtered)
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-green-700 text-right">
+                                        ₹ {report.summary.totalCash.toLocaleString()}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-700 text-right">
+                                        ₹ {report.summary.totalUpi.toLocaleString()}
+                                    </td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
 

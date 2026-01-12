@@ -20,9 +20,17 @@ export async function getAmusementOwners() {
         const owners = await prisma.amusementOwner.findMany({
             orderBy: { name: 'asc' },
             include: {
-                ticketTypes: true // Include linked tickets to show count or details
+                ticketTypes: true, // Legacy direct link
+                ticketShares: { include: { ticketType: true } } // Multi-owner link
             }
         });
+
+        // Map to include a combined 'amusements' count or list for UI convenience?
+        // The UI (AmusementOwners.tsx) likely counts 'owner.ticketTypes.length'.
+        // We should probably normalize this data structure or update the UI.
+        // Let's inspect the UI component first to see how it consumes this data.
+        // Actually, let's just return both and let the UI handle it, OR merge them here for easier UI consumption.
+        // To be safe and minimize UI changes, let's look at the UI component first.
         return { success: true, data: owners };
     } catch (error) {
         console.error('Error fetching amusement owners:', error);

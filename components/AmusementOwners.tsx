@@ -145,10 +145,16 @@ export function AmusementOwners() {
                                 <TableCell>{owner.contactNumber || '-'}</TableCell>
                                 <TableCell className="truncate max-w-[200px]">{owner.address || '-'}</TableCell>
                                 <TableCell>
-                                    {owner.ticketTypes && owner.ticketTypes.length > 0
-                                        ? <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">{owner.ticketTypes.length} rides</span>
-                                        : <span className="text-muted-foreground text-xs">None</span>
-                                    }
+                                    {(() => {
+                                        const directCount = owner.ticketTypes?.length || 0;
+                                        // @ts-ignore - ticketShares is injected from server action
+                                        const sharedCount = owner.ticketShares?.length || 0;
+                                        const total = directCount + sharedCount;
+
+                                        return total > 0
+                                            ? <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">{total} rides</span>
+                                            : <span className="text-muted-foreground text-xs">None</span>
+                                    })()}
                                 </TableCell>
                                 <TableCell className="text-right">
                                     <div className="flex justify-end gap-2">
