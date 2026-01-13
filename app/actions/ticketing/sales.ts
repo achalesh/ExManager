@@ -5,15 +5,10 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { getSession, requireRole, verifyRole } from '@/lib/auth';
 
-// --- Schema Definitions ---
+import { ticketSaleSchema } from './schemas';
 
-export const ticketSaleSchema = z.object({
-    eventId: z.coerce.number(),
-    items: z.array(z.object({
-        ticketTypeId: z.coerce.number(),
-        quantity: z.coerce.number().min(1),
-    })),
-});
+// --- Schema Definitions ---
+// Moved to schemas.ts
 
 // --- Ticket Sales ---
 
