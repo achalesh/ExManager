@@ -1,5 +1,3 @@
-'use server';
-
 import { cookies } from 'next/headers';
 import { prisma } from './prisma';
 import bcrypt from 'bcryptjs';
@@ -25,6 +23,7 @@ function generateToken(): string {
 
 // Get current session from cookie
 export async function getSession(): Promise<SessionData | null> {
+    'use server';
     const cookieStore = await cookies();
     const token = cookieStore.get('session_token')?.value;
 
@@ -68,6 +67,7 @@ export async function getSession(): Promise<SessionData | null> {
 
 // Login function
 export async function login(username: string, password: string): Promise<{ success: boolean; error?: string }> {
+    'use server';
     const user = await prisma.user.findUnique({
         where: { username },
         include: { role: true },
@@ -111,6 +111,7 @@ export async function login(username: string, password: string): Promise<{ succe
 
 // Logout function
 export async function logout(): Promise<void> {
+    'use server';
     const cookieStore = await cookies();
     const token = cookieStore.get('session_token')?.value;
 
@@ -122,6 +123,7 @@ export async function logout(): Promise<void> {
 
 // Set active event for session
 export async function setActiveEvent(eventId: number): Promise<{ success: boolean; error?: string }> {
+    'use server';
     const session = await getSession();
 
     if (!session) {
