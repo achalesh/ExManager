@@ -1,9 +1,9 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { getEventStaff, deleteStaff } from '@/app/staff-actions';
-import { AddStaffDialog } from '@/components/AddStaffDialog';
-import { EditStaffDialog } from '@/components/EditStaffDialog';
-import { DeleteStaffButton } from '@/components/DeleteStaffButton';
+import { AddStaffDialog } from '@/components/dialogs/AddStaffDialog';
+import { EditStaffDialog } from '@/components/dialogs/EditStaffDialog';
+import { DeleteStaffButton } from '@/components/shared/DeleteStaffButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Phone, MapPin, Calendar, CreditCard } from 'lucide-react';

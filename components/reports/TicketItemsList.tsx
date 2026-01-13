@@ -14,8 +14,8 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Edit } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { deleteTicketType } from '@/app/ticketing-actions';
-import { CreateTicketTypeDialog } from '@/components/CreateTicketTypeDialog';
-import { UpdateTicketTypeDialog } from '@/components/UpdateTicketTypeDialog';
+import { CreateTicketTypeDialog } from '@/components/dialogs/CreateTicketTypeDialog';
+import { UpdateTicketTypeDialog } from '@/components/dialogs/UpdateTicketTypeDialog';
 
 interface TicketType {
     id: number;

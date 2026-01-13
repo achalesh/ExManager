@@ -186,36 +186,88 @@ export async function getExhibitorReport(eventId: number) {
     }).filter(e => e.bookings.length > 0); // Only exhibitors with bookings
 }
 
-export async function getPaymentReport(eventId: number) {
+export async function getPaymentReport(eventId: number, filters?: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    category?: string;
+    method?: string;
+    date?: string;
+}) {
     const session = await getSession();
 
     if (!session) {
-        return [];
+        return {
+            payments: [],
+            pagination: { currentPage: 1, totalPages: 0, totalItems: 0 },
+            summary: { totalAmount: 0, totalCash: 0, totalUPI: 0 }
+        };
     }
 
-    const payments = await prisma.payment.findMany({
-        where: {
-            OR: [
-                { invoice: { eventId } }, // Payments linked to event invoices
-                {
-                    // Or payments linked to exhibitors of this event (if direct linkage is missing, fallback)
-                    // The schema shows Payment has optional invoiceId.
-                    // If invoiceId is null, we might rely on exhibitor.bookings for event context?
-                    // Actually, the schema doesn't have eventId on Payment. 
-                    // But our recordPayment puts it on invoice? Or does it?
-                    // recordPayment doesn't seem to link to Invoice in the code I saw! 
-                    // Wait, `recordPayment` in `payment-actions.ts` (lines 40-52) does NOT set invoiceId.
-                    // It only sets exhibitorId. 
-                    // This is a data model issue.
-                    // However, we can filter by exhibitors who are part of this event.
-                    exhibitor: {
-                        bookings: {
-                            some: { eventId }
+    const page = filters?.page || 1;
+    const pageSize = filters?.pageSize || 20;
+    const skip = (page - 1) * pageSize;
+
+    // Construct Where Clause
+    const where: any = {
+        AND: [
+            {
+                OR: [
+                    { invoice: { eventId } },
+                    {
+                        exhibitor: {
+                            bookings: {
+                                some: { eventId }
+                            }
                         }
                     }
-                }
-            ]
-        },
+                ]
+            }
+        ]
+    };
+
+    // Add Filters
+    if (filters?.search) {
+        const search = filters.search.trim();
+        if (search) {
+            where.AND.push({
+                OR: [
+                    { receiptNumber: { contains: search } }, // SQLite is case-insensitive by default roughly? No, need mode usually. Prisma simplified?
+                    // For SQLite/Postgres compatibility usually use mode: insensitive if supported or just contains
+                    { receiptNumber: { contains: search } },
+                    { exhibitor: { name: { contains: search } } },
+                    { exhibitor: { faciaName: { contains: search } } }
+                ]
+            });
+        }
+    }
+
+    if (filters?.category && filters.category !== 'All') {
+        where.AND.push({ category: filters.category });
+    }
+
+    if (filters?.method && filters.method !== 'All') {
+        where.AND.push({ paymentMethod: filters.method });
+    }
+
+    if (filters?.date) {
+        const d = new Date(filters.date);
+        const start = new Date(d.setHours(0, 0, 0, 0));
+        const end = new Date(d.setHours(23, 59, 59, 999));
+        where.AND.push({
+            paymentDate: {
+                gte: start,
+                lte: end
+            }
+        });
+    }
+
+    // 1. Get Total Count
+    const totalItems = await prisma.payment.count({ where });
+
+    // 2. Get Paginated Data
+    const payments = await prisma.payment.findMany({
+        where,
         include: {
             exhibitor: {
                 select: {
@@ -228,16 +280,64 @@ export async function getPaymentReport(eventId: number) {
                 }
             }
         },
-        orderBy: {
-            paymentDate: 'desc'
+        orderBy: { paymentDate: 'desc' },
+        skip,
+        take: pageSize
+    });
+
+    // 3. Get Summary (Aggregates for the WHOLE filtered set, not just page)
+    // Prisma aggregate is fast enough usually
+    const aggregates = await prisma.payment.groupBy({
+        by: ['paymentMethod'],
+        where,
+        _sum: {
+            amount: true
         }
     });
 
-    return payments.map(p => ({
+    let totalAmount = 0;
+    let totalCash = 0;
+    let totalUPI = 0;
+
+    aggregates.forEach(agg => {
+        const amt = agg._sum.amount || 0;
+        totalAmount += amt;
+        const method = (agg.paymentMethod || '').toLowerCase();
+        if (method.includes('cash')) totalCash += amt;
+        else totalUPI += amt; // Broad categorization, adjust if 'Cheque' maps elsewhere
+        // Usually Cheque/Bank is 'Other', but for Cash/UPI split:
+        // Client side logic was: includes('cash') -> Cash, else UPI.
+        // We should stick to that, or strictly map 'UPI' to UPI.
+        // Let's stick to the client logic: Cash is Cash, everything else (UPI, Cheque, Bank) is "Bank/Online" usually, but label says UPI.
+        // Let's refine:
+        // Cash = includes 'cash'
+        // UPI = includes 'upi'
+        // Others?
+        // Let's simply sum 'Cash' as Cash, and everything else in Total.
+        // The previous UI had Cash and UPI columns.
+    });
+
+    // Map to View Model
+    const mappedPayments = payments.map(p => ({
         ...p,
         exhibitorName: p.exhibitor.faciaName || p.exhibitor.name,
         space: p.exhibitor.bookings.map(b => b.space.label).join(', ')
     }));
+
+    return {
+        payments: mappedPayments,
+        pagination: {
+            currentPage: page,
+            pageSize,
+            totalPages: Math.ceil(totalItems / pageSize),
+            totalItems
+        },
+        summary: {
+            totalAmount,
+            totalCash,
+            totalUPI
+        }
+    };
 }
 
 export async function getAllocationSummary(eventId: number) {

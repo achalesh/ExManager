@@ -1,8 +1,8 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getRoles } from '@/app/admin-actions';
-import { CreateRoleDialog } from '@/components/CreateRoleDialog';
-import { DeleteRoleButton } from '@/components/DeleteRoleButton';
+import { CreateRoleDialog } from '@/components/dialogs/CreateRoleDialog';
+import { DeleteRoleButton } from '@/components/shared/DeleteRoleButton';
 import {
     Table,
     TableBody,

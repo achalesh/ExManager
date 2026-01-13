@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getSheds } from '@/app/resource-actions';
 import { getShedAllocations, getExhibitors } from '@/app/allocation-actions';
-import { ShedAllocationInterface } from '@/components/ShedAllocationInterface';
+import { ShedAllocationInterface } from '@/components/features/ShedAllocationInterface';
 import { Home } from 'lucide-react';
 
 export default async function AllocateShedPage() {

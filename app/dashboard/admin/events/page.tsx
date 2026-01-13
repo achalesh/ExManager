@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getEvents } from '@/app/actions';
-import { CreateEventDialog } from '@/components/CreateEventDialog';
-import { EditEventDialog } from '@/components/EditEventDialog';
-import { DeleteEventButton } from '@/components/DeleteEventButton';
+import { CreateEventDialog } from '@/components/dialogs/CreateEventDialog';
+import { EditEventDialog } from '@/components/dialogs/EditEventDialog';
+import { DeleteEventButton } from '@/components/shared/DeleteEventButton';
 import { Calendar, MapPin, Users } from 'lucide-react';
 import { setActiveEvent } from '@/lib/auth';
 

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getMaterials } from '@/app/resource-actions';
 import { getMaterialAllocations, getExhibitors } from '@/app/allocation-actions';
-import { MaterialAllocationInterface } from '@/components/MaterialAllocationInterface';
+import { MaterialAllocationInterface } from '@/components/features/MaterialAllocationInterface';
 import { Package } from 'lucide-react';
 
 export default async function AllocateMaterialPage() {

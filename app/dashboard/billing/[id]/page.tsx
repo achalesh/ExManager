@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getExhibitorBillingDetails } from '@/app/billing-actions';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BillingControls } from '@/components/BillingControls';
+import { BillingControls } from '@/components/reports/BillingControls';
 import { ArrowLeft, Printer } from 'lucide-react';
 import Link from 'next/link';
 import { Separator } from '@/components/ui/separator';

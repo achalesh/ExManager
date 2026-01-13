@@ -18,8 +18,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { AddInventoryDialog } from '@/components/AddInventoryDialog';
-import { DeleteInventoryButton } from '@/components/DeleteInventoryButton';
+import { AddInventoryDialog } from '@/components/dialogs/AddInventoryDialog';
+import { DeleteInventoryButton } from '@/components/shared/DeleteInventoryButton';
 import { ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 

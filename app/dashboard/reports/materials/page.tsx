@@ -4,7 +4,7 @@ import { getMaterialAllocations } from '@/app/allocation-actions';
 import { ArrowLeft, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { PrintButton } from '@/components/PrintButton';
+import { PrintButton } from '@/components/printing/PrintButton';
 import { MaterialReportsClient } from '@/components/reports/MaterialReportsClient';
 import { Fragment } from 'react';
 

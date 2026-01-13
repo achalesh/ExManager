@@ -1,6 +1,6 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { CompanyLedgerInterface } from '@/components/CompanyLedgerInterface';
+import { CompanyLedgerInterface } from '@/components/features/CompanyLedgerInterface';
 import { getEventLedger } from '@/app/accounts-actions';
 
 export default async function CompanyLedgerPage() {

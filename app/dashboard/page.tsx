@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Calendar, MapPin, Users, IndianRupee, Package, Zap } from 'lucide-react';
 import { getPendingPasswordRequests } from '@/app/admin-actions';
-import { PasswordRequestsAlert } from '@/components/PasswordRequestsAlert';
+import { PasswordRequestsAlert } from '@/components/shared/PasswordRequestsAlert';
 import { getMaterialAllocations } from '@/app/allocation-actions';
 import { MaterialReportsClient } from '@/components/reports/MaterialReportsClient';
 

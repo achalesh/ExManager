@@ -210,7 +210,7 @@ export function DaybookInterface({ eventId }: { eventId: number }) {
                 <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
                     <div className="grid grid-cols-12 bg-slate-50 border-b p-3 font-semibold text-slate-700">
                         <div className="col-span-8">Opening Balance b/d</div>
-                        <div className="col-span-2 text-right text-green-700">₹{data.openingBalance.toLocaleString()}</div>
+                        <div className={`col-span-2 text-right ${data.openingBalance < 0 ? 'text-red-700' : 'text-green-700'}`}>₹{data.openingBalance.toLocaleString()}</div>
                         <div className="col-span-2"></div>
                     </div>
 
@@ -260,7 +260,7 @@ export function DaybookInterface({ eventId }: { eventId: number }) {
                         </div>
                         <div className="grid grid-cols-12 text-lg font-bold text-gray-900 pt-2 border-t border-gray-200">
                             <div className="col-span-6 text-right pr-4">Closing Balance c/d:</div>
-                            <div className="col-span-4 text-right text-indigo-700 bg-indigo-50 px-2 rounded">
+                            <div className={`col-span-4 text-right px-2 rounded ${data.closingBalance < 0 ? 'text-red-700 bg-red-50' : 'text-indigo-700 bg-indigo-50'}`}>
                                 ₹{data.closingBalance.toLocaleString()}
                             </div>
                         </div>

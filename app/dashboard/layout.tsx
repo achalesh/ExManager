@@ -1,8 +1,8 @@
 import { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
-import { DashboardNav } from '@/components/DashboardNav';
-import { Footer } from '@/components/Footer';
+import { DashboardNav } from '@/components/layout/DashboardNav';
+import { Footer } from '@/components/layout/Footer';
 
 export default async function DashboardLayout({
     children,

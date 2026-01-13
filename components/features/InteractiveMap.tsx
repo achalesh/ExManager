@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { DragEndEvent, useDraggable, useSensor, useSensors, MouseSensor, TouchSensor } from '@dnd-kit/core';
-import { ClientDndContext } from '@/components/ClientDndContext';
+import { ClientDndContext } from '@/components/shared/ClientDndContext';
 import { restrictToParentElement } from '@dnd-kit/modifiers';
 import { Button } from '@/components/ui/button';
 import { updateSpacePosition } from '@/app/space-actions';

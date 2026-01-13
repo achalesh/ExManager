@@ -1,8 +1,8 @@
 
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { UPIMachinesClient } from '@/components/UPIMachinesClient';
-import { TicketMachineAssignment } from '@/components/TicketMachineAssignment';
+import { UPIMachinesClient } from '@/components/features/UPIMachinesClient';
+import { TicketMachineAssignment } from '@/components/reports/TicketMachineAssignment';
 
 export default async function Page() {
     const session = await getSession();

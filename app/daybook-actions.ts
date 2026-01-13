@@ -360,52 +360,74 @@ export async function getDaybook(eventId: number, dateStr: string): Promise<Dayb
         include: { exhibitor: true }
     });
 
-    const rentPayments: any[] = [];
+    const consolidationGroups: Record<string, any[]> = {
+        'Rent': [],
+        'Electrical': [],
+        'Material': [],
+        'Shed': []
+    };
     const otherPayments: any[] = [];
 
     payments.forEach(p => {
-        const isRent = (p.category === 'Rent' || p.category === 'Shop Rent');
-        if (isRent) rentPayments.push(p);
-        else otherPayments.push(p);
+        // Normalize Category checks
+        const cat = p.category || 'General';
 
-        // Track UPI for ALL payments (Rent or Other)
+        let targetGroup = '';
+        if (cat === 'Rent' || cat === 'Shop Rent') targetGroup = 'Rent';
+        else if (cat.includes('Electrical')) targetGroup = 'Electrical';
+        else if (cat.includes('Material')) targetGroup = 'Material';
+        else if (cat.includes('Shed')) targetGroup = 'Shed';
+
+        if (targetGroup) {
+            consolidationGroups[targetGroup].push(p);
+        } else {
+            otherPayments.push(p);
+        }
+
+        // Track UPI for ALL payments
         const isUPI = (p.paymentMethod || '').toLowerCase().includes('upi');
         if (isUPI) {
             accumulateUPI(p.category || 'General', p.amount);
         }
     });
 
-    // 4a. Process RENT Payments (Consolidated)
-    if (rentPayments.length > 1) {
-        // Sort by receipt number to find min/max
-        // specific logic for receipt number? It might be string.
-        // Try to extract number if possible, or just lex sort.
-        const sortedRent = [...rentPayments].sort((a, b) => {
-            const numA = parseInt(a.receiptNumber) || 0;
-            const numB = parseInt(b.receiptNumber) || 0;
-            return numA - numB;
-        });
+    // 4a. Process CONSOLIDATED Groups
+    const groupTypes = ['Rent', 'Electrical', 'Material', 'Shed'];
 
-        const minRcp = sortedRent[0].receiptNumber;
-        const maxRcp = sortedRent[sortedRent.length - 1].receiptNumber;
-        const totalRent = sortedRent.reduce((sum, p) => sum + p.amount, 0);
+    groupTypes.forEach(groupName => {
+        const group = consolidationGroups[groupName];
+        if (group.length > 1) {
+            // Sort by receipt number
+            const sorted = [...group].sort((a, b) => {
+                const numA = parseInt(a.receiptNumber) || 0;
+                const numB = parseInt(b.receiptNumber) || 0;
+                return numA - numB;
+            });
 
-        entries.push({
-            id: `auto-rent-consol-${startOfDay.getTime()}`,
-            date: startOfDay,
-            particulars: `Rcp from ${minRcp} - Rcp to ${maxRcp} - Various weekly Payments`,
-            receiptAmount: totalRent,
-            paymentAmount: 0,
-            type: 'Income',
-            isAuto: true,
-            category: 'Rent',
-            share: 0,
-            name: 'Rent Consolidated'
-        });
-    } else if (rentPayments.length === 1) {
-        // Just add single rent normally
-        otherPayments.push(rentPayments[0]);
-    }
+            const minRcp = sorted[0].receiptNumber;
+            const maxRcp = sorted[sorted.length - 1].receiptNumber;
+            const totalAmt = sorted.reduce((sum, p) => sum + p.amount, 0);
+
+            // Custom Suffix based on user request
+            // "weekly rent Payment", "weekly electrical Payment", etc.
+            const suffix = `weekly ${groupName.toLowerCase()} Payment`;
+
+            entries.push({
+                id: `auto-${groupName.toLowerCase()}-consol-${startOfDay.getTime()}`,
+                date: startOfDay,
+                particulars: `Rcp from ${minRcp} - Rcp to ${maxRcp} - ${suffix}`,
+                receiptAmount: totalAmt,
+                paymentAmount: 0,
+                type: 'Income',
+                isAuto: true,
+                category: groupName,
+                share: 0,
+                name: `${groupName} Consolidated`
+            });
+        } else if (group.length === 1) {
+            otherPayments.push(group[0]);
+        }
+    });
 
     // 4b. Process OTHER Payments (Individual)
     otherPayments.forEach(p => {
@@ -416,7 +438,7 @@ export async function getDaybook(eventId: number, dateStr: string): Promise<Dayb
             id: `pay-${p.id}`,
             date: p.paymentDate,
             particulars: `${p.category || 'Payment'} - ${exhibitorName}${facia} (RCP: ${p.receiptNumber})`,
-            receiptAmount: p.amount, // Payments are Income for the Event
+            receiptAmount: p.amount,
             paymentAmount: 0,
             type: 'Income',
             isAuto: true,

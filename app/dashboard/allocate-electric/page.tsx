@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getElectricalItems } from '@/app/resource-actions';
 import { getElectricalAllocations, getExhibitors } from '@/app/allocation-actions';
-import { ElectricalAllocationInterface } from '@/components/ElectricalAllocationInterface';
+import { ElectricalAllocationInterface } from '@/components/features/ElectricalAllocationInterface';
 import { Zap } from 'lucide-react';
 
 export default async function AllocateElectricPage() {

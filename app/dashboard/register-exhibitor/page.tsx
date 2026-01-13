@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getExhibitors } from '@/app/allocation-actions';
-import { RegisterExhibitorDialog } from '@/components/RegisterExhibitorDialog';
-import { EditExhibitorDialog } from '@/components/EditExhibitorDialog';
-import { DeleteExhibitorButton } from '@/components/DeleteExhibitorButton';
+import { RegisterExhibitorDialog } from '@/components/dialogs/RegisterExhibitorDialog';
+import { EditExhibitorDialog } from '@/components/dialogs/EditExhibitorDialog';
+import { DeleteExhibitorButton } from '@/components/shared/DeleteExhibitorButton';
 import { Users, Mail, Phone } from 'lucide-react';
 
 export default async function RegisterExhibitorPage() {

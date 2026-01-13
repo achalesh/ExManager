@@ -1,6 +1,6 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { AmusementOwners } from '@/components/AmusementOwners';
+import { AmusementOwners } from '@/components/features/AmusementOwners';
 
 export default async function Page() {
     const session = await getSession();

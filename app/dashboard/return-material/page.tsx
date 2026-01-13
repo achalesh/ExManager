@@ -1,4 +1,4 @@
-import { MaterialReturnInterface } from '@/components/MaterialReturnInterface';
+import { MaterialReturnInterface } from '@/components/features/MaterialReturnInterface';
 
 export const metadata = {
     title: 'Return Material | Exhibition Manager',

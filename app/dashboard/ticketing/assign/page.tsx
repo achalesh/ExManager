@@ -2,7 +2,7 @@ import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { getTicketTypes } from '@/app/ticketing-actions';
 import { getInventory } from '@/app/inventory-actions';
-import { AssignTicketsInterface } from '@/components/AssignTicketsInterface';
+import { AssignTicketsInterface } from '@/components/features/AssignTicketsInterface';
 
 export default async function Page() {
     const session = await getSession();

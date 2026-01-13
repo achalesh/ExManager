@@ -1,6 +1,6 @@
 'use client';
 
-import { SpaceAllocationGrid } from '@/components/SpaceAllocationGrid';
+import { SpaceAllocationGrid } from '@/components/features/SpaceAllocationGrid';
 import { Button } from '@/components/ui/button';
 import { MapPin, Printer } from 'lucide-react';
 

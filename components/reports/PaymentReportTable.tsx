@@ -7,10 +7,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Search, Edit2, Trash2, Filter, Loader2, Download, AlertTriangle } from 'lucide-react';
-import { updatePayment, deletePayment, updatePaymentReceipt, deletePaymentReceipt } from '@/app/payment-actions';
-import { useRouter } from 'next/navigation';
+import { Search, Edit2, Trash2, Filter, Loader2, Download, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { updatePaymentReceipt, deletePaymentReceipt } from '@/app/payment-actions';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { format } from 'date-fns';
+
 
 interface Payment {
     id: number;
@@ -32,6 +33,8 @@ interface GroupedPayment {
     space: string;
     category: string;
     totalAmount: number;
+    cashAmount: number;
+    upiAmount: number;
     methods: string[];
     notes: string;
     collectedBy: string;
@@ -39,38 +42,90 @@ interface GroupedPayment {
     isSplit: boolean;
 }
 
-// ... (imports)
-
 interface PaymentReportTableProps {
-    initialPayments: Payment[];
+    data: {
+        payments: Payment[];
+        pagination: {
+            currentPage: number;
+            totalPages: number;
+            totalItems: number;
+            pageSize: number;
+        };
+        summary: {
+            totalAmount: number;
+            totalCash: number;
+            totalUPI: number;
+        };
+    };
     role: string;
 }
 
-export function PaymentReportTable({ initialPayments, role }: PaymentReportTableProps) {
+export function PaymentReportTable({ data, role }: PaymentReportTableProps) {
     const router = useRouter();
-    const [payments, setPayments] = useState(initialPayments);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [methodFilter, setMethodFilter] = useState('All');
-    const [dateFilter, setDateFilter] = useState<Date | undefined>(undefined);
-    const isAdmin = role === 'Admin';
+    const searchParams = useSearchParams();
+    const pathname = usePathname();
 
+    // URL State
+    const searchTerm = searchParams.get('search') || '';
+    const methodFilter = searchParams.get('method') || 'All';
+    const categoryFilter = searchParams.get('category') || 'All';
+    const dateFilter = searchParams.get('date') || '';
+
+    const isAdmin = role === 'Admin';
     const [editReceipt, setEditReceipt] = useState<GroupedPayment | null>(null);
     const [deleteReceiptNum, setDeleteReceiptNum] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
 
-    // Group payments by Receipt Number
+    // Debounced Search Update
+    const createQueryString = (name: string, value: string) => {
+        const params = new URLSearchParams(searchParams.toString());
+        if (value && value !== 'All') {
+            params.set(name, value);
+        } else {
+            params.delete(name);
+        }
+        // Reset page on filter change
+        if (name !== 'page') {
+            params.set('page', '1');
+        }
+        return params.toString();
+    };
+
+    const handleSearch = (term: string) => {
+        router.push(pathname + '?' + createQueryString('search', term));
+    };
+
+    const handleFilterChange = (key: string, value: string) => {
+        router.push(pathname + '?' + createQueryString(key, value));
+    };
+
+    const handlePageChange = (page: number) => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('page', page.toString());
+        router.push(pathname + '?' + params.toString());
+    };
+
+    // Group payments (using Server Data)
     const groupedPayments: GroupedPayment[] = [];
     const receiptMap = new Map<string, Payment[]>();
 
-    payments.forEach(p => {
+    data.payments.forEach(p => {
         const existing = receiptMap.get(p.receiptNumber) || [];
         existing.push(p);
         receiptMap.set(p.receiptNumber, existing);
     });
 
-    // Create sorted array of grouped payments
     Array.from(receiptMap.entries()).forEach(([receipt, items]) => {
         const first = items[0];
+        let cash = 0;
+        let upi = 0;
+
+        items.forEach(i => {
+            const m = (i.paymentMethod || '').toLowerCase();
+            if (m.includes('cash')) cash += i.amount;
+            else upi += i.amount;
+        });
+
         const total = items.reduce((sum, i) => sum + i.amount, 0);
         const methods = Array.from(new Set(items.map(i => i.paymentMethod)));
 
@@ -81,6 +136,8 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
             space: first.space,
             category: first.category,
             totalAmount: total,
+            cashAmount: cash,
+            upiAmount: upi,
             methods: methods,
             notes: items.map(i => i.notes).filter(Boolean).join('; '),
             collectedBy: first.collectedBy || '-',
@@ -89,35 +146,25 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
         });
     });
 
-    // Sort by date desc
+    // Sort by date desc (Already sorted likely, but group sort ensures new groups are ordered)
     groupedPayments.sort((a, b) => b.date.getTime() - a.date.getTime());
 
-    // Filter
-    const filteredPayments = groupedPayments.filter(p => {
-        const matchesSearch =
-            p.receiptNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.exhibitorName.toLowerCase().includes(searchTerm.toLowerCase());
+    const filteredPayments = groupedPayments;
 
-        const matchesMethod = methodFilter === 'All' || p.methods.includes(methodFilter);
+    // Use Summary from Server
+    const { totalAmount, totalCash, totalUPI } = data.summary;
 
-        const matchesDate = !dateFilter ||
-            (p.date.getDate() === dateFilter.getDate() &&
-                p.date.getMonth() === dateFilter.getMonth() &&
-                p.date.getFullYear() === dateFilter.getFullYear());
-
-        return matchesSearch && matchesMethod && matchesDate;
-    });
-
-    const totalAmount = filteredPayments.reduce((sum, p) => sum + p.totalAmount, 0);
 
     const handleDownloadCSV = () => {
-        const headers = ['Date', 'Receipt No', 'Exhibitor', 'Space', 'Category', 'Amount', 'Method', 'Notes', 'Collected By'];
+        const headers = ['Date', 'Receipt No', 'Exhibitor', 'Space', 'Category', 'Cash', 'UPI', 'Total', 'Method', 'Notes', 'Collected By'];
         const rows = filteredPayments.map(p => [
             format(p.date, 'yyyy-MM-dd'),
             p.receiptNumber,
             p.exhibitorName,
             p.space,
             p.category,
+            p.cashAmount,
+            p.upiAmount,
             p.totalAmount,
             p.methods.join('/'),
             p.notes,
@@ -141,14 +188,10 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
         setLoading(true);
 
         try {
-            // Logic for update would go here - confusing as it depends on whether we update singular or batch
-            // The logic from previous file seems to assume we call updatePaymentReceipt for the whole group
             const res = await updatePaymentReceipt({
                 receiptNumber: editReceipt.receiptNumber,
                 date: editReceipt.date,
                 notes: editReceipt.notes,
-                // For split payments, we can't edit amount/method easily here via this UI
-                // If not split, we can
                 ...(!editReceipt.isSplit ? {
                     amount: editReceipt.totalAmount,
                     paymentMethod: editReceipt.methods[0]
@@ -156,23 +199,10 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
             });
 
             if (res.success) {
-                // Refresh logic - ideally router.refresh() but local state update is faster
                 setEditReceipt(null);
-                setPayments(prev => prev.map(p => {
-                    if (p.receiptNumber === editReceipt.receiptNumber) {
-                        return {
-                            ...p,
-                            paymentDate: editReceipt.date,
-                            notes: editReceipt.notes, // Simplified
-                            ...(!editReceipt.isSplit ? {
-                                amount: editReceipt.totalAmount,
-                                paymentMethod: editReceipt.methods[0]
-                            } : {})
-                        };
-                    }
-                    return p;
-                }));
+                // Refresh data
                 router.refresh();
+
             } else {
                 alert('Update failed: ' + (('error' in res) ? res.error : 'Unknown error'));
             }
@@ -192,8 +222,9 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
             const res = await deletePaymentReceipt(deleteReceiptNum);
             if (res.success) {
                 setDeleteReceiptNum(null);
-                setPayments(prev => prev.filter(p => p.receiptNumber !== deleteReceiptNum));
+                // Refresh
                 router.refresh();
+
             } else {
                 alert('Delete failed: ' + (('error' in res) ? res.error : 'Unknown error'));
             }
@@ -207,35 +238,77 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
 
     return (
         <div className="space-y-4">
-            <div className="flex flex-col md:flex-row gap-4 justify-between items-center">
-                <div className="flex gap-2 w-full md:w-auto">
-                    {/* ... (Search & Filter) */}
+            <div className="flex flex-col xl:flex-row gap-4 justify-between items-start xl:items-center">
+                <div className="flex flex-col md:flex-row gap-2 w-full xl:w-auto items-end md:items-center">
+                    {/* Search & Filter */}
                     <div className="relative w-full md:w-64">
                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
                             placeholder="Search receipt, exhibitor..."
                             className="pl-8"
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
+                            defaultValue={searchTerm}
+                            onChange={e => {
+                                // Simple debounce
+                                const val = e.target.value;
+                                setTimeout(() => {
+                                    if (val === e.target.value) handleSearch(val);
+                                }, 500);
+                            }}
                         />
                     </div>
-                    <Select value={methodFilter} onValueChange={setMethodFilter}>
-                        <SelectTrigger className="w-[150px]">
-                            <SelectValue placeholder="Method" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="All">All Methods</SelectItem>
-                            <SelectItem value="Cash">Cash</SelectItem>
-                            <SelectItem value="UPI">UPI</SelectItem>
-                            <SelectItem value="Cheque">Cheque</SelectItem>
-                            <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                        </SelectContent>
-                    </Select>
+
+                    {/* Filters Group */}
+                    <div className="flex gap-2 w-full md:w-auto">
+                        <Input
+                            type="date"
+                            className="w-full md:w-[150px]"
+                            value={dateFilter}
+                            onChange={(e) => handleFilterChange('date', e.target.value)}
+                        />
+                        <Select value={categoryFilter} onValueChange={(v) => handleFilterChange('category', v)}>
+                            <SelectTrigger className="w-full md:w-[150px]">
+                                <SelectValue placeholder="Category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="All">All Categories</SelectItem>
+                                <SelectItem value="Rent">Rent</SelectItem>
+                                <SelectItem value="Material">Material</SelectItem>
+                                <SelectItem value="Electrical">Electrical</SelectItem>
+                                <SelectItem value="Shed">Shed</SelectItem>
+                                <SelectItem value="General">General</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Select value={methodFilter} onValueChange={(v) => handleFilterChange('method', v)}>
+                            <SelectTrigger className="w-full md:w-[150px]">
+                                <SelectValue placeholder="Method" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="All">All Methods</SelectItem>
+                                <SelectItem value="Cash">Cash</SelectItem>
+                                <SelectItem value="UPI">UPI</SelectItem>
+                                <SelectItem value="Cheque">Cheque</SelectItem>
+                                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {/* Clear Filters */}
+                        {(dateFilter || categoryFilter !== 'All' || methodFilter !== 'All') && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => router.push(pathname)}
+                                title="Clear Filters"
+                            >
+                                <Filter className="h-4 w-4 text-red-500" />
+                            </Button>
+                        )}
+                    </div>
                 </div>
                 <div className="flex items-center gap-4">
                     {isAdmin && (
-                        <div className="bg-slate-100 px-4 py-2 rounded-lg font-bold">
-                            Total: ₹{totalAmount.toLocaleString('en-IN')}
+                        <div className="bg-slate-100 px-4 py-2 rounded-lg text-sm flex gap-4">
+                            <div className="font-bold text-green-700">Cash: ₹{totalCash.toLocaleString('en-IN')}</div>
+                            <div className="font-bold text-blue-700">UPI: ₹{totalUPI.toLocaleString('en-IN')}</div>
+                            <div className="font-bold text-gray-900 border-l pl-4">Total: ₹{totalAmount.toLocaleString('en-IN')}</div>
                         </div>
                     )}
                     <Button variant="outline" onClick={handleDownloadCSV} className="gap-2">
@@ -253,7 +326,9 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
                             <TableHead>Receipt #</TableHead>
                             <TableHead>Exhibitor</TableHead>
                             <TableHead>Category</TableHead>
-                            <TableHead className="text-right">Amount</TableHead>
+                            <TableHead className="text-right text-green-600">Cash</TableHead>
+                            <TableHead className="text-right text-blue-600">UPI</TableHead>
+                            <TableHead className="text-right">Total</TableHead>
                             <TableHead>Method</TableHead>
                             <TableHead>Notes</TableHead>
                             {isAdmin && <TableHead className="text-right">Actions</TableHead>}
@@ -269,6 +344,12 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
                                     <div className="text-xs text-muted-foreground">{payment.space}</div>
                                 </TableCell>
                                 <TableCell>{payment.category}</TableCell>
+                                <TableCell className="text-right font-mono text-green-600">
+                                    {payment.cashAmount > 0 ? `₹${payment.cashAmount.toLocaleString('en-IN')}` : '-'}
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-blue-600">
+                                    {payment.upiAmount > 0 ? `₹${payment.upiAmount.toLocaleString('en-IN')}` : '-'}
+                                </TableCell>
                                 <TableCell className="text-right font-bold">₹{payment.totalAmount.toLocaleString('en-IN')}</TableCell>
                                 <TableCell>
                                     <div className="flex gap-1 flex-wrap">
@@ -299,14 +380,43 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
                         ))}
                         {filteredPayments.length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={isAdmin ? 8 : 7} className="text-center py-8 text-muted-foreground">
+                                <TableCell colSpan={isAdmin ? 10 : 9} className="text-center py-8 text-muted-foreground">
                                     No payments found
                                 </TableCell>
                             </TableRow>
                         )}
                     </TableBody>
                 </Table>
+
+                {/* Pagination Controls */}
+                <div className="flex items-center justify-between p-4 border-t">
+                    <div className="text-sm text-muted-foreground">
+                        Showing {((data.pagination.currentPage - 1) * data.pagination.pageSize) + 1} to {Math.min(data.pagination.currentPage * data.pagination.pageSize, data.pagination.totalItems)} of {data.pagination.totalItems} entries
+                    </div>
+                    <div className="flex items-center space-x-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(data.pagination.currentPage - 1)}
+                            disabled={data.pagination.currentPage === 1}
+                        >
+                            <ChevronLeft className="h-4 w-4 mr-1" />
+                            Previous
+                        </Button>
+                        <div className="text-sm font-medium">Page {data.pagination.currentPage} of {data.pagination.totalPages}</div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(data.pagination.currentPage + 1)}
+                            disabled={data.pagination.currentPage >= data.pagination.totalPages}
+                        >
+                            Next
+                            <ChevronRight className="h-4 w-4 ml-1" />
+                        </Button>
+                    </div>
+                </div>
             </div>
+
 
             {/* Edit Dialog */}
             <Dialog open={!!editReceipt} onOpenChange={(o) => !o && setEditReceipt(null)}>
@@ -315,7 +425,7 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
                         <DialogTitle>Edit Payment Details</DialogTitle>
                         <DialogDescription>
                             {editReceipt?.receiptNumber} - {editReceipt?.exhibitorName}
-                            {editReceipt?.isSplit && <div className="text-amber-600 flex items-center gap-1 mt-1"><AlertTriangle className="h-3 w-3" /> Split payment: Amount and Method cannot be edited.</div>}
+                            {editReceipt?.isSplit && <span className="text-amber-600 flex items-center gap-1 mt-1"><AlertTriangle className="h-3 w-3" /> Split payment: Amount and Method cannot be edited.</span>}
                         </DialogDescription>
                     </DialogHeader>
                     {editReceipt && (
@@ -401,7 +511,7 @@ export function PaymentReportTable({ initialPayments, role }: PaymentReportTable
                         <DialogTitle>Delete Payment Receipt?</DialogTitle>
                         <DialogDescription>
                             This action cannot be undone. This will permanently delete this receipt and all associated payment records
-                            {deleteReceiptNum && payments.filter(p => p.receiptNumber === deleteReceiptNum).length > 1 ? ' (including all split parts)' : ''}.
+                            {deleteReceiptNum && data.payments.filter(p => p.receiptNumber === deleteReceiptNum).length > 1 ? ' (including all split parts)' : ''}.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>

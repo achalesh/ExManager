@@ -1395,7 +1395,7 @@ export function StaffAllocationInterface({
                                                                 </TableCell>
                                                                 <TableCell className="text-center no-print">
                                                                     <Button size="sm" variant="ghost" className="h-6 text-xs text-gray-400" disabled>
-                                                                        View
+                                                                        Settled
                                                                     </Button>
                                                                 </TableCell>
                                                             </TableRow>

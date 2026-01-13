@@ -1,7 +1,7 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { getInventory } from '@/app/inventory-actions';
-import { TicketStockList } from '@/components/TicketStockList';
+import { TicketStockList } from '@/components/reports/TicketStockList';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Package, Ticket, IndianRupee, Layers, Tag } from 'lucide-react';
 

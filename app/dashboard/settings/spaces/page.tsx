@@ -1,13 +1,13 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getSpaceCategories, getSpaces } from '@/app/space-actions';
-import { CreateSpaceCategoryDialog } from '@/components/CreateSpaceCategoryDialog';
-import { BulkCreateSpacesDialog } from '@/components/BulkCreateSpacesDialog';
+import { CreateSpaceCategoryDialog } from '@/components/dialogs/CreateSpaceCategoryDialog';
+import { BulkCreateSpacesDialog } from '@/components/dialogs/BulkCreateSpacesDialog';
 import { MapPin, Ruler, Grid3x3, IndianRupee } from 'lucide-react';
-import { EditSpaceCategoryDialog } from '@/components/EditSpaceCategoryDialog';
-import { DeleteSpaceCategoryButton } from '@/components/DeleteSpaceCategoryButton';
-import { EditSpaceDialog } from '@/components/EditSpaceDialog';
-import { DeleteSpaceButton } from '@/components/DeleteSpaceButton';
+import { EditSpaceCategoryDialog } from '@/components/dialogs/EditSpaceCategoryDialog';
+import { DeleteSpaceCategoryButton } from '@/components/shared/DeleteSpaceCategoryButton';
+import { EditSpaceDialog } from '@/components/dialogs/EditSpaceDialog';
+import { DeleteSpaceButton } from '@/components/shared/DeleteSpaceButton';
 
 export default async function SpaceManagementPage() {
     const session = await getSession();

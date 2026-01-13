@@ -1,10 +1,10 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getMaterials } from '@/app/resource-actions';
-import { CreateMaterialDialog } from '@/components/CreateMaterialDialog';
-import { MaterialInventoryList } from '@/components/MaterialInventoryList';
-import { DeleteMaterialButton } from '@/components/DeleteMaterialButton';
-import { EditMaterialDialog } from '@/components/EditMaterialDialog';
+import { CreateMaterialDialog } from '@/components/dialogs/CreateMaterialDialog';
+import { MaterialInventoryList } from '@/components/reports/MaterialInventoryList';
+import { DeleteMaterialButton } from '@/components/shared/DeleteMaterialButton';
+import { EditMaterialDialog } from '@/components/dialogs/EditMaterialDialog';
 import { Package, IndianRupee } from 'lucide-react';
 
 export default async function CreateMaterialsPage() {

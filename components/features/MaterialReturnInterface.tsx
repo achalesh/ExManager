@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Scan, RotateCcw, AlertCircle, CheckCircle, Package, User, Building, StickyNote, Trash2, ListPlus, Camera, X } from 'lucide-react';
 import { getItemReturnDetails, returnBatchItems } from '@/app/allocation-actions';
-import QRScanner from '@/components/QRScanner';
+import QRScanner from '@/components/shared/QRScanner';
 
 interface ScanResult {
     item: any;

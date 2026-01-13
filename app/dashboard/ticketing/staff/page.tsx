@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getTicketTypes, getStaffAssignments } from '@/app/ticketing-actions';
 import { getInventory } from '@/app/inventory-actions';
 import { getEventStaff } from '@/app/staff-actions';
-import { StaffAllocationInterface } from '@/components/StaffAllocationInterface';
+import { StaffAllocationInterface } from '@/components/features/StaffAllocationInterface';
 
 // Force rebuild
 export default async function Page() {

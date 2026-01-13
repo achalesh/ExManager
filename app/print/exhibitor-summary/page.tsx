@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getEventReport, getExhibitorReport } from '@/app/report-actions';
-import { PrintActions } from '@/components/PrintActions';
+import { PrintActions } from '@/components/printing/PrintActions';
 
 export default async function PrintableExhibitorSummary() {
     const session = await getSession();

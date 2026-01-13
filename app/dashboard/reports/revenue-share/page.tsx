@@ -1,6 +1,6 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { RevenueShareReport } from '@/components/RevenueShareReport';
+import { RevenueShareReport } from '@/components/reports/RevenueShareReport';
 
 export default async function Page() {
     const session = await getSession();

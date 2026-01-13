@@ -1,7 +1,7 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { getTicketTypes } from '@/app/ticketing-actions';
-import { TicketItemsList } from '@/components/TicketItemsList';
+import { TicketItemsList } from '@/components/reports/TicketItemsList';
 
 export default async function Page() {
     const session = await getSession();

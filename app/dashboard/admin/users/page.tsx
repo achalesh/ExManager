@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getUsers, getRoles, getPendingPasswordRequests } from '@/app/admin-actions';
-import { CreateUserDialog } from '@/components/CreateUserDialog';
-import { UserActions } from '@/components/UserActions';
-import { PasswordRequestsAlert } from '@/components/PasswordRequestsAlert';
+import { CreateUserDialog } from '@/components/dialogs/CreateUserDialog';
+import { UserActions } from '@/components/features/UserActions';
+import { PasswordRequestsAlert } from '@/components/shared/PasswordRequestsAlert';
 import { Shield, Mail, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 

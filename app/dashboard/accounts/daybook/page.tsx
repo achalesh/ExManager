@@ -1,6 +1,6 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
-import { DaybookInterface } from '@/components/DaybookInterface';
+import { DaybookInterface } from '@/components/features/DaybookInterface';
 
 export default async function DaybookPage() {
     const session = await getSession();

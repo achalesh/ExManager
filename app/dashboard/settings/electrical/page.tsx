@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getElectricalItems } from '@/app/resource-actions';
-import { CreateElectricalDialog } from '@/components/CreateElectricalDialog';
+import { CreateElectricalDialog } from '@/components/dialogs/CreateElectricalDialog';
 import { Zap, IndianRupee } from 'lucide-react';
 
 export default async function CreateElectricalPage() {

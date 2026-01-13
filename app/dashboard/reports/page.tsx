@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getEventReport, getExhibitorReport, getAllocationSummary } from '@/app/report-actions';
-import { ReportControls } from '@/components/ReportControls';
+import { ReportControls } from '@/components/reports/ReportControls';
 import { Calendar, Users, MapPin, IndianRupee, Package, Zap, Home, TrendingUp, Download, List, Printer } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';

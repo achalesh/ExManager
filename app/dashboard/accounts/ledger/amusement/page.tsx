@@ -1,7 +1,7 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
-import { AmusementLedgerInterface } from '@/components/AmusementLedgerInterface';
+import { AmusementLedgerInterface } from '@/components/features/AmusementLedgerInterface';
 
 async function getAmusementOwners(eventId: number) {
     if (!eventId) return [];

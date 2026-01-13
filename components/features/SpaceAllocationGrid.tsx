@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/dialog';
 import { MapPin, IndianRupee, Trash2 } from 'lucide-react';
 import { allocateSpace, deleteAllocation, getExhibitorSummary } from '@/app/allocation-actions';
-import { ExhibitorDetailsDialog } from '@/components/ExhibitorDetailsDialog';
+import { ExhibitorDetailsDialog } from '@/components/dialogs/ExhibitorDetailsDialog';
 
 interface SpaceAllocationGridProps {
     availableSpaces: any[];
@@ -132,7 +132,7 @@ export function SpaceAllocationGrid({ availableSpaces, bookings, exhibitors, eve
                                     {space.label}
                                 </div>
                                 <div className="text-xs text-gray-600 mb-2">
-                                    {space.category.name}
+                                    {space.category.name} ({space.category.dimensions})
                                 </div>
                                 <div className="text-sm font-semibold text-green-600">
                                     ₹{space.category.price}

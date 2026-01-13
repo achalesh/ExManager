@@ -143,4 +143,20 @@ export async function setActiveEvent(eventId: number): Promise<{ success: boolea
     return { success: true };
 }
 
+// Authorization Helper
+export function verifyRole(session: SessionData | null, allowedRoles: string[]): boolean {
+    if (!session) return false;
+    return allowedRoles.includes(session.roleName);
+}
+
+// Authorization Helper with Error
+export function requireRole(session: SessionData | null, allowedRoles: string[]): asserts session is SessionData {
+    if (!session) {
+        throw new Error('Not authenticated');
+    }
+    if (!allowedRoles.includes(session.roleName)) {
+        throw new Error('Unauthorized');
+    }
+}
+
 

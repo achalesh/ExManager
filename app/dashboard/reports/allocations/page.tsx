@@ -4,7 +4,7 @@ import { getBookings } from '@/app/allocation-actions';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { PrintButton } from '@/components/PrintButton';
+import { PrintButton } from '@/components/printing/PrintButton';
 
 export const revalidate = 0;
 

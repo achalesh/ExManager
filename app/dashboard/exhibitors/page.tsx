@@ -1,8 +1,8 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { getExhibitors } from '@/app/exhibitor-actions';
-import { EditExhibitorDialog } from '@/components/EditExhibitorDialog';
-import { DeleteExhibitorButton } from '@/components/DeleteExhibitorButton';
+import { EditExhibitorDialog } from '@/components/dialogs/EditExhibitorDialog';
+import { DeleteExhibitorButton } from '@/components/shared/DeleteExhibitorButton';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getSpaces } from '@/app/space-actions';
 import { getBookings, getExhibitors } from '@/app/allocation-actions';
-import { SpaceAllocationView } from '@/components/SpaceAllocationView';
+import { SpaceAllocationView } from '@/components/features/SpaceAllocationView';
 
 export default async function AllocateSpacePage() {
     const session = await getSession();

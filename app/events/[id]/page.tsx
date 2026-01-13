@@ -1,7 +1,7 @@
 import { getEvent, getCategories } from '@/app/actions';
-import { NewSpaceDialog } from '@/components/NewSpaceDialog';
-import { NewCategoryDialog } from '@/components/NewCategoryDialog';
-import { BookingDialog } from '@/components/BookingDialog';
+import { NewSpaceDialog } from '@/components/dialogs/NewSpaceDialog';
+import { NewCategoryDialog } from '@/components/dialogs/NewCategoryDialog';
+import { BookingDialog } from '@/components/dialogs/BookingDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

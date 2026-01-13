@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
 import { getSheds } from '@/app/resource-actions';
-import { CreateShedDialog } from '@/components/CreateShedDialog';
+import { CreateShedDialog } from '@/components/dialogs/CreateShedDialog';
 import { Home, IndianRupee, Ruler } from 'lucide-react';
 
 export default async function CreateShedsPage() {

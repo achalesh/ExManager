@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { RegisterExhibitorDialog } from '@/components/RegisterExhibitorDialog';
+import { RegisterExhibitorDialog } from '@/components/dialogs/RegisterExhibitorDialog';
 
 export function NavBar() {
     return (

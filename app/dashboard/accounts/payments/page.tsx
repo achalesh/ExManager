@@ -1,7 +1,7 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { getBillingSummary } from '@/app/billing-actions';
-import { PaymentCollectionInterface } from '@/components/PaymentCollectionInterface';
+import { PaymentCollectionInterface } from '@/components/features/PaymentCollectionInterface';
 
 export default async function PaymentCollectionPage() {
     const session = await getSession();
