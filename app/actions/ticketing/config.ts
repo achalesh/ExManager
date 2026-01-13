@@ -7,34 +7,7 @@ import { getSession } from '@/lib/auth';
 
 // --- Schema Definitions ---
 
-export const ticketTypeSchema = z.object({
-    eventId: z.coerce.number(),
-    category: z.enum(['Entrance', 'Amusement', 'Office']),
-    name: z.string().min(2),
-    price: z.coerce.number().min(0),
-    // Deprecated single owner fields, keeping for backward compatibility in Zod but logic will change
-    amusementOwnerId: z.coerce.number().optional().nullable(),
-    ownerSharePercentage: z.coerce.number().optional(),
-
-    // New Multi-Owner Support
-    ownerShares: z.array(z.object({
-        amusementOwnerId: z.coerce.number(),
-        sharePercentage: z.coerce.number()
-    })).optional(),
-
-    // UPI Machine Assignment
-    upiMachineId: z.coerce.number().optional().nullable(),
-    ticketsPerBooklet: z.coerce.number().optional().default(100),
-});
-
-export const ticketBatchSchema = z.object({
-    ticketTypeId: z.coerce.number(),
-    mode: z.enum(['manual', 'inventory']).default('manual'),
-    startNumber: z.coerce.number().optional(),
-    endNumber: z.coerce.number().optional(),
-    inventoryId: z.coerce.number().optional(),
-    quantity: z.coerce.number().optional(),
-});
+import { ticketTypeSchema, ticketBatchSchema, assignStockSchema } from './schemas';
 
 // --- Ticket Types ---
 
@@ -205,11 +178,7 @@ export async function getTicketTypes(eventId: number) {
 
 // --- Ticket Batches ---
 
-export const assignStockSchema = z.object({
-    ticketTypeId: z.coerce.number(),
-    inventoryId: z.coerce.number(),
-    quantity: z.coerce.number().min(1)
-});
+// --- Ticket Batches ---
 
 export async function assignTicketStock(data: z.infer<typeof assignStockSchema>) {
     const session = await getSession();

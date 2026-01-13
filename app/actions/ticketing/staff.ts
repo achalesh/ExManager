@@ -7,29 +7,10 @@ import { getSession } from '@/lib/auth';
 
 // --- Schema Definitions ---
 
-export const staffAssignmentSchema = z.object({
-    staffId: z.coerce.number(),
-    ticketTypeId: z.coerce.number(),
-    inventoryId: z.coerce.number(),
-    quantity: z.coerce.number().min(1),
-    assignedDate: z.string().optional(), // ISO String
-    assignedUpiMachineId: z.coerce.number().optional()
-});
+import { staffAssignmentSchema, settlementSchema, updateAssignmentSchema } from './schemas';
 
-export const settlementSchema = z.object({
-    assignmentId: z.coerce.number(),
-    returnedCount: z.coerce.number().min(0),
-    cashReceived: z.coerce.number().min(0),
-    upiReceived: z.coerce.number().min(0).optional().default(0),
-    returnDate: z.string().optional() // ISO String
-});
-
-export const updateAssignmentSchema = z.object({
-    assignmentId: z.coerce.number(),
-    staffId: z.coerce.number(),
-    assignedDate: z.string().optional(),
-    assignedUpiMachineId: z.coerce.number().optional()
-});
+// --- Schema Definitions ---
+// Moved to schemas.ts
 
 // --- Staff Allocation ---
 
