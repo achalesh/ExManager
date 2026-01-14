@@ -4,8 +4,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { TicketingReportControls } from "@/components/TicketingReportControls";
-import { DeleteSaleButton } from "@/components/DeleteSaleButton";
+import { TicketingReportControls } from "@/components/reports/TicketingReportControls";
+import { DeleteSaleButton } from "@/components/shared/DeleteSaleButton";
 import { Banknote, Ticket, Calendar, TrendingUp, Users, Wallet, Clock, CreditCard } from 'lucide-react';
 
 interface TicketReportProps {
