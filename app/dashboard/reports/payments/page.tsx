@@ -7,10 +7,11 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 
 interface PageProps {
-    searchParams: { [key: string]: string | string[] | undefined }
+    searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }
 
-export default async function PaymentReportPage({ searchParams }: PageProps) {
+export default async function PaymentReportPage(props: PageProps) {
+    const searchParams = await props.searchParams;
     const session = await getSession();
 
     if (!session || !session.activeEventId) {
