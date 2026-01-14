@@ -166,7 +166,6 @@ export async function reconcileAssignment(formData: FormData) {
                     cashReceived,
                     upiReceived,
                     difference,
-                    remarks: remarks || null,
                 }
             });
 
@@ -252,7 +251,6 @@ export async function getStaffAccounts() {
                 sta."cashReceived", 
                 sta."upiReceived", 
                 sta."difference", 
-                sta."remarks", 
                 s.name as "staffName", 
                 s."contactNo" as "staffContact",
                 tt.name as "ticketTypeName"
@@ -276,7 +274,6 @@ export async function getStaffAccounts() {
             cashReceived: row.cashReceived,
             upiReceived: Number(row.upiReceived || 0), // Explicit cast to Number
             difference: row.difference,
-            remarks: row.remarks,
             staff: {
                 name: row.staffName,
                 contactNo: row.staffContact
@@ -433,7 +430,6 @@ export async function undoReconciliation(assignmentId: number) {
                     cashReceived: 0,
                     upiReceived: 0,
                     difference: 0,
-                    remarks: null,
                 }
             });
         });

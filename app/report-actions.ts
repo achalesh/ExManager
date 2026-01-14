@@ -199,7 +199,7 @@ export async function getPaymentReport(eventId: number, filters?: {
     if (!session) {
         return {
             payments: [],
-            pagination: { currentPage: 1, totalPages: 0, totalItems: 0 },
+            pagination: { currentPage: 1, totalPages: 0, totalItems: 0, pageSize: 0 },
             summary: { totalAmount: 0, totalCash: 0, totalUPI: 0 }
         };
     }

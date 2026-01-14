@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { deletePayment, updatePayment } from "@/app/payment-actions";
 import { Edit2, Trash2, Loader2, Printer } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { ReceiptSheet } from './ReceiptSheet';
+import { ReceiptSheet } from '../printing/ReceiptSheet';
 
 interface Payment {
     id: number;

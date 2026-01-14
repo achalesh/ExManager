@@ -71,10 +71,11 @@ export async function generatePayroll(eventId: number, month: number, year: numb
             // Create or Update Payroll
             const existing = await prisma.staffPayroll.findUnique({
                 where: {
-                    staffId_month_year: {
+                    staffId_month_year_weekNumber: {
                         staffId: staff.id,
                         month,
-                        year
+                        year,
+                        weekNumber: 0
                     }
                 }
             });
@@ -83,10 +84,11 @@ export async function generatePayroll(eventId: number, month: number, year: numb
                 // Only overwrite if pending. If paid, don't auto-regenerate without explicit force (safe default)
                 await prisma.staffPayroll.upsert({
                     where: {
-                        staffId_month_year: {
+                        staffId_month_year_weekNumber: {
                             staffId: staff.id,
                             month,
-                            year
+                            year,
+                            weekNumber: 0
                         }
                     },
                     update: {
@@ -104,6 +106,7 @@ export async function generatePayroll(eventId: number, month: number, year: numb
                         eventId: staff.eventId,
                         month,
                         year,
+                        weekNumber: 0,
                         baseSalary: staff.salaryAmount,
                         presentDays,
                         totalDays: totalDaysInMonth,

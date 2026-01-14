@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { generateInvoice } from '@/app/billing-actions';
 import { Loader2, Receipt } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { PaymentDialog } from './PaymentDialog';
+import { PaymentDialog } from '../dialogs/PaymentDialog';
 
 interface BillingControlsProps {
     exhibitorId: number;

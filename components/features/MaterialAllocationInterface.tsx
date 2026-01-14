@@ -24,7 +24,7 @@ import { Label } from '@/components/ui/label';
 import { Plus, Package, IndianRupee } from 'lucide-react';
 import { allocateMaterial, allocateScannedItems, allocateMaterialItems, deleteMaterialAllocation, updateMaterialAllocation, allocateBatchMaterials, deleteExhibitorMaterialAllocations, updateExhibitorMaterialBillNumber, returnMaterial } from '@/app/allocation-actions';
 import { Scan, X, Trash2, Pencil, Printer, RotateCcw } from 'lucide-react';
-import { MaterialReceipt } from './MaterialReceipt';
+import { MaterialReceipt } from '../printing/MaterialReceipt';
 
 interface MaterialAllocationInterfaceProps {
     materials: any[];

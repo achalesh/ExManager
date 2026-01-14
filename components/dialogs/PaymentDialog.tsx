@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { recordPayment, getNextReceiptNumber } from '@/app/payment-actions';
 import { PlusCircle } from 'lucide-react';
-import { ReceiptSheet } from './ReceiptSheet'; // We will create this next
+import { ReceiptSheet } from '../printing/ReceiptSheet'; // We will create this next
 
 interface PaymentDialogProps {
     exhibitorId: number;

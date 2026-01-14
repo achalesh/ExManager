@@ -8,13 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getNextReceiptNumber as fetchNextReceipt, recordPayment as savePaymentAction } from '@/app/payment-actions';
 import { getExhibitorBillingDetails as fetchExhibitorDetails } from '@/app/billing-actions';
-import { ReceiptSheet } from './ReceiptSheet';
+import { ReceiptSheet } from '../printing/ReceiptSheet';
 import { Check, ChevronsUpDown, Loader2, Printer, Wallet } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
-import { PaymentHistoryList } from './PaymentHistoryList';
+import { PaymentHistoryList } from '../reports/PaymentHistoryList';
 
 interface ExhibitorSummary {
     id: number;

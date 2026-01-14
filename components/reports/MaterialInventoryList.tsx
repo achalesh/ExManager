@@ -12,8 +12,8 @@ import {
 } from "@/components/ui/sheet";
 import { Badge } from '@/components/ui/badge';
 import { getMaterialItems, deleteMaterialItem } from '@/app/inventory-actions';
-import { BulkAddMaterialDialog } from './BulkAddMaterialDialog';
-import { QRCodeSheet } from './QRCodeSheet';
+import { BulkAddMaterialDialog } from '../dialogs/BulkAddMaterialDialog';
+import { QRCodeSheet } from '../printing/QRCodeSheet';
 import { Boxes, RotateCw, Trash2 } from 'lucide-react';
 
 interface Material {

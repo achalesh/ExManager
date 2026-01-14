@@ -20,7 +20,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { Plus, Home, IndianRupee, Ruler, Printer } from 'lucide-react';
-import { ShedReceipt } from './ShedReceipt';
+import { ShedReceipt } from '../printing/ShedReceipt';
 import { allocateShed } from '@/app/allocation-actions';
 
 interface ShedAllocationInterfaceProps {

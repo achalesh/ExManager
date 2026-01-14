@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Plus, Zap, IndianRupee, Printer, Trash2, Pencil } from 'lucide-react';
-import { ElectricalReceipt } from './ElectricalReceipt';
+import { ElectricalReceipt } from '../printing/ElectricalReceipt';
 import { allocateElectrical, allocateBatchElectrical, deleteElectricalAllocation, updateElectricalAllocation, deleteExhibitorElectricalAllocations, updateExhibitorElectricalBillNumber } from '@/app/allocation-actions';
 
 interface ElectricalAllocationInterfaceProps {
