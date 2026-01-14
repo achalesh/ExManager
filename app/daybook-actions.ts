@@ -587,7 +587,7 @@ export async function deleteTransaction(id: number) {
     return { success: true };
 }
 
-export async function updateTransaction(id: number, data: z.infer<typeof expenseSchema> | z.infer<typeof manualReceiptSchema>) {
+export async function updateTransaction(id: number, data: z.infer<typeof expenseSchema> | z.infer<typeof manualReceiptSchema>, type?: 'Income' | 'Expense') {
     const session = await getSession();
     if (!session) throw new Error("Unauthorized");
 
@@ -602,7 +602,8 @@ export async function updateTransaction(id: number, data: z.infer<typeof expense
             description: particulars,
             transactionDate: new Date(date),
             paymentMethod: paymentMethod || 'Cash',
-            recordedBy: session.name
+            recordedBy: session.name,
+            ...(type && { type }) // Only update type if provided
         }
     });
 

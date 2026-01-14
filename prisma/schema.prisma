@@ -26,6 +26,8 @@ model Event {
   ticketSales            TicketSale[]
   ticketInventories      TicketInventory[]
   staffList              Staff[]
+  staffAttendance        StaffAttendance[]
+  staffPayroll           StaffPayroll[]
   auditLogs              AuditLog[]
   invoices               Invoice[]
   transactions           Transaction[]
@@ -71,6 +73,16 @@ model Staff {
   user        User?    @relation(fields: [userId], references: [id])
 
   ticketAssignments StaffTicketAssignment[]
+  attendance        StaffAttendance[]
+  payroll           StaffPayroll[]
+
+  // HR Fields
+  salaryAmount      Float    @default(0.0)
+  salaryFrequency   String   @default("Monthly") // Monthly, Daily
+  status            String   @default("Active")  // Active, Inactive
+
+  joiningDate       DateTime?
+  endDate           DateTime?
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -99,18 +111,63 @@ model StaffTicketAssignment {
   soldCount         Int?            @default(0)
   totalAmount       Float?          @default(0.0)
   cashReceived      Float?          @default(0.0)
-  upiReceived       Float?          @default(0.0) // Added field for digital payments
+  upiReceived       Float?          @default(0.0)
+  difference        Float?          @default(0.0)
+  settlementDate    DateTime?
+  isSettled         Boolean         @default(false)
+
   assignedUpiMachineId Int?
   assignedUpiMachine   UPIMachine? @relation(fields: [assignedUpiMachineId], references: [id])
-  difference        Float?          @default(0.0) // (Cash + UPI) - TotalAmount
-  remarks           String?
-  
-  isSettled         Boolean         @default(false)
-  settlementDate    DateTime?
   
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 }
+
+model StaffAttendance {
+  id        Int      @id @default(autoincrement())
+  staffId   Int
+  staff     Staff    @relation(fields: [staffId], references: [id])
+  eventId   Int
+  event     Event    @relation(fields: [eventId], references: [id])
+  date      DateTime
+  status    String   @default("Present") // Present, Absent, HalfDay
+  checkIn   DateTime?
+  checkOut  DateTime?
+  remarks   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([staffId, date])
+}
+
+model StaffPayroll {
+  id             Int      @id @default(autoincrement())
+  staffId        Int
+  staff          Staff    @relation(fields: [staffId], references: [id])
+  eventId        Int
+  event          Event    @relation(fields: [eventId], references: [id])
+  month          Int
+  year           Int
+  weekNumber     Int      @default(0) // 0 for Monthly, 1-5 for Weekly
+  baseSalary     Float
+  presentDays    Float
+  totalDays      Int
+  calculated     Float
+  deductions     Float    @default(0.0)
+  incentives     Float    @default(0.0)
+  advance        Float    @default(0.0)
+  netSalary      Float
+  status         String   @default("Pending") // Pending, Paid
+  paymentDate    DateTime?
+  paymentMethod  String?  // Cash, UPI
+  transactionId  String?  // If UPI
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([staffId, month, year, weekNumber])
+}
+
+
 
 model SpaceCategory {
   id          Int      @id @default(autoincrement())

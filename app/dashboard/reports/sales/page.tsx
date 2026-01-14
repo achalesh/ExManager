@@ -89,17 +89,17 @@ export default async function DetailedSalesReportPage(props: {
             {/* Item-wise Breakdown Summary */}
             <div className="space-y-4">
                 <h2 className="text-lg font-semibold text-gray-900">Item Breakdown</h2>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-8 gap-2">
                     {ticketTypenames.map(name => {
                         const item = report.summary.byItem[name];
                         return (
                             <Card key={name} className="bg-white border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                                <CardContent className="p-4">
-                                    <div className="text-sm font-medium text-gray-500 truncate" title={name}>{name}</div>
-                                    <div className="mt-1 text-lg font-bold text-gray-900">₹ {item.revenue.toLocaleString()}</div>
-                                    <div className="text-xs text-gray-500 mb-2">{item.count} tickets</div>
+                                <CardContent className="p-2">
+                                    <div className="text-[10px] font-medium text-gray-500 truncate uppercase tracking-wider" title={name}>{name}</div>
+                                    <div className="mt-0.5 text-sm font-bold text-gray-900">₹ {item.revenue.toLocaleString()}</div>
+                                    <div className="text-[9px] text-gray-400 mb-1">{item.count} tix</div>
 
-                                    <div className="flex justify-between items-center text-xs border-t pt-2">
+                                    <div className="flex justify-between items-center text-[9px] border-t pt-1 mt-1">
                                         <span className="text-green-600 font-semibold" title="Cash">
                                             ₹{item.cash.toLocaleString()}
                                         </span>
@@ -131,7 +131,7 @@ export default async function DetailedSalesReportPage(props: {
                                 type="date"
                                 name="date"
                                 defaultValue={dateFilter || ''}
-                                className="pl-9 h-10 w-40 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="pl-9 h-8 w-40 rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                             />
                         </div>
                         <Button type="submit" variant="secondary" size="sm">Filter</Button>

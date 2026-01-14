@@ -80,7 +80,7 @@ export function DashboardNav({ session }: DashboardNavProps) {
     const operationsItems = [
         { href: '/dashboard/register-exhibitor', label: 'Register Exhibitor', icon: UserPlus, roles: ['Admin', 'Manager'] },
         { href: '/dashboard/exhibitors', label: 'Exhibitor List', icon: Users, roles: ['Admin', 'Manager', 'Accounts'] },
-        { href: '/dashboard/staff', label: 'Event Staff', icon: Users, roles: ['Admin', 'Manager'] },
+        { href: '/dashboard/hr', label: 'Human Resources', icon: Users, roles: ['Admin', 'Manager', 'Accountant'] },
     ];
 
     const accountItems = [

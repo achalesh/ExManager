@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getDaybook, addTransaction, updateTransaction, deleteTransaction, closeDaybook, getRecentParticulars, DaybookData } from '@/app/daybook-actions';
 import { format } from 'date-fns';
-import { ChevronLeft, ChevronRight, Loader2, Plus, Trash2, Lock, Edit2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Plus, Trash2, Lock, Edit2, Download, Printer } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export function DaybookInterface({ eventId }: { eventId: number }) {
@@ -103,7 +103,7 @@ export function DaybookInterface({ eventId }: { eventId: number }) {
         };
 
         if (editingId) {
-            await updateTransaction(editingId, payload);
+            await updateTransaction(editingId, payload, transType);
             setEditingId(null);
             setIsAddOpen(false); // Close on edit success
         } else {
@@ -171,6 +171,100 @@ export function DaybookInterface({ eventId }: { eventId: number }) {
         }
     };
 
+    const handleDownloadCSV = () => {
+        if (!data) return;
+
+        const headers = ["Date", "Particulars", "Type", "Receipt (In)", "Payment (Out)", "Category"];
+        const rows = data.entries.map(e => [
+            format(new Date(e.date), 'yyyy-MM-dd'),
+            `"${e.particulars.replace(/"/g, '""')}"`, // Escape quotes
+            e.type,
+            e.receiptAmount || 0,
+            e.paymentAmount || 0,
+            e.category || ''
+        ]);
+
+        const csvContent = "data:text/csv;charset=utf-8,"
+            + headers.join(",") + "\n"
+            + rows.map(r => r.join(",")).join("\n")
+            + `\n,,,Total Receipts,${data.totalReceipts},`
+            + `\n,,,Total Payments,${data.totalPayments},`
+            + `\n,,,Closing Balance,${data.closingBalance},`;
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `Daybook_${format(date, 'yyyy-MM-dd')}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handlePrint = () => {
+        if (!data) return;
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+
+        const html = `
+            <html>
+            <head>
+                <title>Daybook - ${format(date, 'dd MMM yyyy')}</title>
+                <style>
+                    body { font-family: sans-serif; padding: 20px; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+                    th { background-color: #f4f4f4; }
+                    .text-right { text-align: right; }
+                    .total-row { font-weight: bold; background-color: #eee; }
+                    .header { text-align: center; margin-bottom: 20px; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h2>Daybook Report</h2>
+                    <p>Date: ${format(date, 'dd MMM yyyy')}</p>
+                </div>
+                
+                <div style="margin-bottom: 10px;">
+                    <strong>Opening Balance:</strong> ₹${data.openingBalance.toLocaleString()}
+                </div>
+
+                    <table>
+                    <thead>
+                        <tr>
+                            <th>Particulars</th>
+                            <th class="text-right">Receipt (In)</th>
+                            <th class="text-right">Payment (Out)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.entries.map(e => `
+                            <tr>
+                                <td>${e.particulars}</td>
+                                <td class="text-right">${e.receiptAmount > 0 ? e.receiptAmount.toLocaleString() : '-'}</td>
+                                <td class="text-right">${e.paymentAmount > 0 ? e.paymentAmount.toLocaleString() : '-'}</td>
+                            </tr>
+                        `).join('')}
+                        <tr class="total-row">
+                            <td>Totals (Inc. Opening)</td>
+                            <td class="text-right">₹${(data.totalReceipts + data.openingBalance).toLocaleString()}</td>
+                            <td class="text-right">₹${data.totalPayments.toLocaleString()}</td>
+                        </tr>
+                        <tr class="total-row" style="font-size: 14px;">
+                            <td>Closing Balance</td>
+                            <td colspan="2" class="text-right">₹${data.closingBalance.toLocaleString()}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </body>
+            </html>
+        `;
+
+        printWindow.document.write(html);
+        printWindow.document.close();
+        printWindow.print();
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center bg-white p-4 rounded-lg border shadow-sm">
@@ -198,6 +292,12 @@ export function DaybookInterface({ eventId }: { eventId: number }) {
                             Open
                         </div>
                     )}
+                    <Button variant="outline" size="icon" onClick={handlePrint} title="Print Daybook">
+                        <Printer className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="icon" onClick={handleDownloadCSV} title="Export CSV">
+                        <Download className="h-4 w-4" />
+                    </Button>
                     <Button onClick={() => setIsAddOpen(true)} disabled={data?.isClosed}>
                         <Plus className="mr-2 h-4 w-4" /> Add Entry
                     </Button>
@@ -254,8 +354,8 @@ export function DaybookInterface({ eventId }: { eventId: number }) {
 
                     <div className="bg-slate-50 border-t p-4 space-y-2">
                         <div className="grid grid-cols-12 text-sm font-semibold text-gray-500">
-                            <div className="col-span-6 text-right pr-4">Totals:</div>
-                            <div className="col-span-2 text-right border-t border-gray-300 pt-1">₹{data.totalReceipts.toLocaleString()}</div>
+                            <div className="col-span-6 text-right pr-4">Totals (Inc. Opening):</div>
+                            <div className="col-span-2 text-right border-t border-gray-300 pt-1">₹{(data.totalReceipts + data.openingBalance).toLocaleString()}</div>
                             <div className="col-span-2 text-right border-t border-gray-300 pt-1">₹{data.totalPayments.toLocaleString()}</div>
                         </div>
                         <div className="grid grid-cols-12 text-lg font-bold text-gray-900 pt-2 border-t border-gray-200">
